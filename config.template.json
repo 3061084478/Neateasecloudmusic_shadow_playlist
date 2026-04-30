@@ -1,0 +1,20 @@
+{
+  "api_base": "http://127.0.0.1:3000",
+  "cookie": "",
+  "request_timeout": 8,
+  "default_limit": 50,
+  "sleep_seconds": 0.25,
+  "shadow_playlist_id": "",
+  "shadow_playlist_name": "",
+  "shadow_playlist_strategy": "use_existing",
+  "shadow_playlist_private": false,
+  "shadow_playlist_last_set_at": "",
+  "auto_archive_all_friends": true,
+  "auto_archive_initialized": false,
+  "auto_archive_last_run": "",
+  "ai_enabled": false,
+  "ai_base_url": "https://api.openai.com/v1",
+  "ai_model": "gpt-4o-mini",
+  "ai_api_key": "",
+  "ai_timeout": 20
+}

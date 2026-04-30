@@ -1,0 +1,81 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Microsoft YaHei UI", sans-serif;
+  background: #07080a;
+  color: #f5f7fa;
+  font-feature-settings: "calt" 1, "kern" 1, "liga" 1, "ss03" 1;
+  --bg-root:
+    radial-gradient(circle at top left, rgba(255, 99, 99, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(85, 179, 255, 0.08), transparent 26%),
+    linear-gradient(180deg, #07080a 0%, #0b0d10 100%);
+  --surface-0: rgba(13, 14, 16, 0.88);
+  --surface-1: rgba(16, 17, 17, 0.82);
+  --surface-2: rgba(255, 255, 255, 0.02);
+  --surface-3: rgba(255, 255, 255, 0.05);
+  --surface-4: rgba(255, 255, 255, 0.08);
+  --text-1: #f5f7fa;
+  --text-2: #cdd3db;
+  --text-3: #a0a7b1;
+  --text-4: #8d949f;
+  --border-1: rgba(255, 255, 255, 0.06);
+  --border-2: rgba(255, 255, 255, 0.08);
+  --border-3: rgba(255, 255, 255, 0.16);
+  --accent-blue: rgba(85, 179, 255, 0.54);
+  --accent-blue-ring: rgba(85, 179, 255, 0.12);
+  --accent-red: #ff6363;
+  --danger: #ff9797;
+  --shadow-card:
+    0 0 0 1px rgba(27, 28, 30, 1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-floating:
+    0 20px 40px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-root);
+  color: var(--text-1);
+  letter-spacing: 0.2px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+select option {
+  background: #0f1114;
+  color: #f5f7fa;
+}
+
+button {
+  cursor: pointer;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
