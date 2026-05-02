@@ -769,135 +769,6 @@ export function ActivityHeatmap({
   );
 }
 
-export function MoodGrid({ items }: { items: any[] }) {
-  const topItems = (items || []).slice(0, 4);
-  if (!topItems.length) {
-    return <InlineEmpty text="当前没有情绪数据" />;
-  }
-  const total = topItems.reduce((sum, item) => sum + Number(item?.count || 0), 0) || 1;
-  const tones = ["mood-a", "mood-b", "mood-c", "mood-d"];
-  return (
-    <div className="mood-grid">
-      {topItems.map((item, index) => (
-        <div key={`${item?.name || index}-${index}`} className={`mood-card ${tones[index % tones.length]}`}>
-          <strong>{item?.name || "未知"}</strong>
-          <span>{item?.count || 0} 次 · {((Number(item?.count || 0) / total) * 100).toFixed(1)}%</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function CommonWorldPanel({ data }: { data: any }) {
-  const compare = data?.compare || {};
-  const me = compare?.me || {};
-  const friend = compare?.friend || {};
-  const overlap = compare?.overlap || {};
-  const summary = (() => {
-    const genres = (overlap?.genres || []).slice(0, 2).join("、");
-    const moods = (overlap?.moods || []).slice(0, 2).join("、");
-    const score = ((Number(data?.overlap_score || 0)) * 100).toFixed(1);
-    if (genres && moods) {
-      return `重合度 ${score}%，共同风格集中在 ${genres}，共同情绪更偏 ${moods}。`;
-    }
-    if (genres) {
-      return `重合度 ${score}%，共同风格集中在 ${genres}。`;
-    }
-    return `重合度 ${score}%，当前共同世界还在形成中。`;
-  })();
-  return (
-    <div className="common-world-panel">
-      <div className="common-world-column me">
-        <h4>我的世界</h4>
-        <div className="common-world-lines">
-          <div><span>风格</span><strong>{(me?.genres || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-          <div><span>歌手</span><strong>{(me?.artists || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-          <div><span>情绪</span><strong>{(me?.moods || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-        </div>
-      </div>
-      <div className="common-world-column overlap">
-        <h4>共同世界</h4>
-        <div className="common-overlap-score">{((Number(data?.overlap_score || 0)) * 100).toFixed(1)}%</div>
-        <div className="common-world-lines">
-          <div><span>共同风格</span><strong>{(overlap?.genres || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-          <div><span>共同歌手</span><strong>{(overlap?.artists || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-          <div><span>共同情绪</span><strong>{(overlap?.moods || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-        </div>
-      </div>
-      <div className="common-world-column friend">
-        <h4>好友的世界</h4>
-        <div className="common-world-lines">
-          <div><span>风格</span><strong>{(friend?.genres || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-          <div><span>歌手</span><strong>{(friend?.artists || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-          <div><span>情绪</span><strong>{(friend?.moods || []).slice(0, 4).join("、") || "暂无"}</strong></div>
-        </div>
-      </div>
-      <div className="timeline-summary common-world-summary">{summary}</div>
-    </div>
-  );
-}
-
-export function GenreDonutChart({ items }: { items: any[] }) {
-  const chartItems = (items || []).slice(0, 4);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  if (!chartItems.length) {
-    return <InlineEmpty text="当前没有风格数据" />;
-  }
-  const total = chartItems.reduce((sum, item) => sum + Number(item.count || 0), 0) || 1;
-  const radius = 62;
-  const circumference = 2 * Math.PI * radius;
-  const colors = ["#7dd3fc", "#86efac", "#fda4af", "#fcd34d"];
-  let progress = 0;
-
-  return (
-    <div className={`donut-chart ${hoveredIndex !== null ? "has-active-item" : ""}`}>
-      <svg viewBox="0 0 180 180" className="donut-svg">
-        <circle cx="90" cy="90" r={radius} className="donut-track" />
-        {chartItems.map((item, index) => {
-          const value = Number(item.count || 0);
-          const ratio = value / total;
-          const dash = ratio * circumference;
-          const gap = circumference - dash;
-          const strokeDasharray = `${dash} ${gap}`;
-          const strokeDashoffset = -progress * circumference;
-          progress += ratio;
-          return (
-            <circle
-              key={`${item.name || index}-${index}`}
-              cx="90"
-              cy="90"
-              r={radius}
-              className={`donut-segment donut-segment-${index} ${hoveredIndex === index ? "is-hovered" : ""}`}
-              style={{ stroke: colors[index % colors.length], strokeDasharray, strokeDashoffset }}
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseLeave={() => setHoveredIndex(null)}
-            />
-          );
-        })}
-        <text x="90" y="84" textAnchor="middle" className="donut-center-label">
-          TOP1
-        </text>
-        <text x="90" y="106" textAnchor="middle" className="donut-center-value">
-          {chartItems[0]?.name || "暂无"}
-        </text>
-      </svg>
-      <div className="chart-legend">
-        {chartItems.map((item, index) => (
-          <div
-            key={`${item.name || index}-${index}`}
-            className={`chart-legend-row ${hoveredIndex === index ? "is-hovered" : ""}`}
-            onMouseEnter={() => setHoveredIndex(index)}
-            onMouseLeave={() => setHoveredIndex(null)}
-          >
-            <span className="legend-dot" style={{ background: colors[index % colors.length] }} />
-            <span>{item.name || "未知"}</span>
-            <strong>{item.count || 0}</strong>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export function ArtistPodiumChart({ items }: { items: any[] }) {
   const chartItems = (items || []).slice(0, 3);
@@ -926,6 +797,174 @@ export function ArtistPodiumChart({ items }: { items: any[] }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+export function ArtistTopListCard({
+  title,
+  items,
+  emptyText = "暂无歌手数据",
+  accent = "artist"
+}: {
+  title: string;
+  items: any[];
+  emptyText?: string;
+  accent?: "artist" | "friend" | "shared";
+}) {
+  const rows = (items || []).slice(0, 5);
+  if (!rows.length) {
+    return (
+      <div className={`artist-top-card artist-top-card-${accent}`}>
+        <div className="panel-head compact">
+          <div>
+            <h3>{title}</h3>
+          </div>
+        </div>
+        <InlineEmpty text={emptyText} />
+      </div>
+    );
+  }
+  const maxValue = Math.max(...rows.map((item) => Number(item?.count || 0)), 1);
+  return (
+    <div className={`artist-top-card artist-top-card-${accent}`}>
+      <div className="panel-head compact">
+        <div>
+          <h3>{title}</h3>
+        </div>
+      </div>
+      <div className="artist-top-list">
+        {rows.map((item, index) => (
+          <div key={`${title}-${item?.name || index}`} className="artist-top-row">
+            <div className="artist-top-rank">#{index + 1}</div>
+            <div className="artist-top-main">
+              <strong>{item?.name || "未知歌手"}</strong>
+              <div className="artist-top-track">
+                <div className={`artist-top-fill artist-top-fill-${accent}`} style={{ width: `${(Number(item?.count || 0) / maxValue) * 100}%` }} />
+              </div>
+            </div>
+            <span className="artist-top-count">{item?.count || 0}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ArtistSummaryCard({
+  title,
+  items
+}: {
+  title: string;
+  items: Array<{ label: string; value: string | number }>;
+}) {
+  return (
+    <div className="artist-summary-card">
+      <div className="panel-head compact">
+        <div>
+          <h3>{title}</h3>
+        </div>
+      </div>
+      <div className="artist-summary-grid">
+        {items.map((item) => (
+          <div key={item.label} className="artist-summary-item">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ArtistOverlapInsight({
+  title,
+  sharedArtists,
+  mySongCount,
+  friendSongCount,
+  myArtistCount,
+  friendArtistCount
+}: {
+  title: string;
+  sharedArtists: any[];
+  mySongCount: number;
+  friendSongCount: number;
+  myArtistCount: number;
+  friendArtistCount: number;
+}) {
+  const [activeZone, setActiveZone] = useState<"me" | "friend" | "left" | "right" | "center" | "meter" | "tags" | null>(null);
+  const sharedCount = (sharedArtists || []).length;
+  const sharedNames = (sharedArtists || []).slice(0, 5).map((item) => String(item?.name || "")).filter(Boolean);
+  const overlapRatio = Math.min(1, sharedCount / Math.max(1, Math.min(myArtistCount || 0, friendArtistCount || 0, 5)));
+  const meLinked = activeZone === "me" || activeZone === "left";
+  const friendLinked = activeZone === "friend" || activeZone === "right";
+  const centerLinked = activeZone === "center" || activeZone === "meter" || activeZone === "tags";
+
+  return (
+    <div className="artist-summary-card artist-overlap-card">
+      <div className="panel-head compact">
+        <div>
+          <h3>{title}</h3>
+        </div>
+      </div>
+      <div className="artist-overlap-visual">
+        <div
+          className={`artist-overlap-side is-me ${meLinked ? "is-linked" : ""}`}
+          onMouseEnter={() => setActiveZone("me")}
+          onMouseLeave={() => setActiveZone(null)}
+        >
+          <span>我的分享</span>
+          <strong>{mySongCount} 首</strong>
+          <small>{myArtistCount} 位歌手</small>
+        </div>
+        <div className={`artist-overlap-center ${centerLinked ? "is-linked" : ""}`}>
+          <div className="artist-overlap-rings">
+            <div
+              className={`artist-overlap-ring is-left ${meLinked ? "is-linked" : ""}`}
+              onMouseEnter={() => setActiveZone("left")}
+              onMouseLeave={() => setActiveZone(null)}
+            />
+            <div
+              className={`artist-overlap-ring is-right ${friendLinked ? "is-linked" : ""}`}
+              onMouseEnter={() => setActiveZone("right")}
+              onMouseLeave={() => setActiveZone(null)}
+            />
+            <div
+              className={`artist-overlap-core ${centerLinked ? "is-linked" : ""}`}
+              onMouseEnter={() => setActiveZone("center")}
+              onMouseLeave={() => setActiveZone(null)}
+            >
+              <span>共同歌手</span>
+              <strong>{sharedCount || 0}</strong>
+            </div>
+          </div>
+          <div
+            className={`artist-overlap-meter ${centerLinked ? "is-linked" : ""}`}
+            onMouseEnter={() => setActiveZone("meter")}
+            onMouseLeave={() => setActiveZone(null)}
+          >
+            <div className="artist-overlap-meter-fill" style={{ width: `${overlapRatio * 100}%` }} />
+          </div>
+          <div
+            className={`artist-overlap-names ${centerLinked ? "is-linked" : ""}`}
+            onMouseEnter={() => setActiveZone("tags")}
+            onMouseLeave={() => setActiveZone(null)}
+          >
+            {sharedNames.length ? sharedNames.map((name) => (
+              <span key={name} className="tag-pill">{name}</span>
+            )) : <span className="artist-overlap-empty">暂无共同歌手</span>}
+          </div>
+        </div>
+        <div
+          className={`artist-overlap-side is-friend ${friendLinked ? "is-linked" : ""}`}
+          onMouseEnter={() => setActiveZone("friend")}
+          onMouseLeave={() => setActiveZone(null)}
+        >
+          <span>好友分享</span>
+          <strong>{friendSongCount} 首</strong>
+          <small>{friendArtistCount} 位歌手</small>
+        </div>
       </div>
     </div>
   );
@@ -1103,51 +1142,6 @@ export function AnnualReviewPanel({
       <div className="annual-review-grid secondary">
         <div className="annual-review-stat"><span>聊天最多</span><strong>{review?.top_chat_friend_name || "暂无"}</strong></div>
         <div className="annual-review-stat"><span>发歌最多</span><strong>{review?.top_song_friend_name || "暂无"}</strong></div>
-      </div>
-    </div>
-  );
-}
-
-export function DualRankPanel({
-  genres,
-  artists
-}: {
-  genres: any[];
-  artists: any[];
-}) {
-  const left = (genres || []).slice(0, 4);
-  const right = (artists || []).slice(0, 4);
-  const maxValue = Math.max(
-    ...left.map((item) => Number(item.count || 0)),
-    ...right.map((item) => Number(item.count || 0)),
-    1
-  );
-
-  return (
-    <div className="dual-rank-panel">
-      <div className="rank-card rank-card-genre">
-        <h4>风格</h4>
-        {left.map((item, index) => (
-          <div key={`${item.name || index}-${index}`} className="rank-row">
-            <span>{item.name || "未知"}</span>
-            <div className="rank-track">
-              <div className="rank-fill genre" style={{ width: `${(Number(item.count || 0) / maxValue) * 100}%` }} />
-            </div>
-            <strong>{item.count || 0}</strong>
-          </div>
-        ))}
-      </div>
-      <div className="rank-card rank-card-artist">
-        <h4>歌手</h4>
-        {right.map((item, index) => (
-          <div key={`${item.name || index}-${index}`} className="rank-row">
-            <span>{item.name || "未知"}</span>
-            <div className="rank-track">
-              <div className="rank-fill artist" style={{ width: `${(Number(item.count || 0) / maxValue) * 100}%` }} />
-            </div>
-            <strong>{item.count || 0}</strong>
-          </div>
-        ))}
       </div>
     </div>
   );

@@ -275,8 +275,8 @@ class AppController(QtCore.QObject):
             except Exception:
                 playlist_track_count = 0
         relation_summary = {
-            "friend_top_genre": "暂无",
             "friend_top_artist": "暂无",
+            "shared_artists": "无",
             "self_social_tag": "暂无",
         }
         if friend_uid:
@@ -284,9 +284,10 @@ class AppController(QtCore.QObject):
                 relation_payload = self.get_relation_dashboard_payload(window="all", force=False)
                 friend_snapshot = relation_payload.get("friend") or {}
                 self_snapshot = relation_payload.get("self") or {}
+                shared_rows = (friend_snapshot.get("artist_portrait") or {}).get("shared_top_artists") or []
                 relation_summary = {
-                    "friend_top_genre": str(((friend_snapshot.get("top_genres") or [{}])[0].get("name")) or "暂无"),
-                    "friend_top_artist": str(((friend_snapshot.get("top_artists") or [{}])[0].get("name")) or "暂无"),
+                    "friend_top_artist": str((((friend_snapshot.get("artist_portrait") or {}).get("friend_top_artists") or [{}])[0].get("name")) or "暂无"),
+                    "shared_artists": "、".join(str(item.get("name") or "") for item in shared_rows[:2] if item.get("name")) or "无",
                     "self_social_tag": str(self_snapshot.get("social_tag") or "暂无"),
                 }
             except Exception:
@@ -362,6 +363,7 @@ class AppController(QtCore.QObject):
             )
         self.shadow_candidates = preview_items
         self.selected_candidate_ids = [item["msg_id"] for item in preview_items]
+        self.playlist_service.advance_song_archive_cursor(uid=friend.uid, song_messages=preview_items)
         return {
             "items": preview_items,
             "summary": {
@@ -411,6 +413,62 @@ class AppController(QtCore.QObject):
             auto_archive_initialized=True,
             auto_archive_last_run=time.strftime("%Y-%m-%d %H:%M:%S"),
         )
+        return {
+            "friends": friends,
+            "total_friends": len(friends),
+            "full_synced": full_synced,
+            "delta_synced": delta_synced,
+            "failed": failed,
+            "skipped": False,
+        }
+
+    def archive_all_friends_from_cursors(self, initial_pages: int = 6, limit: int = 50) -> Dict[str, Any]:
+        if self.session_state.mode != "real":
+            return {
+                "friends": [],
+                "total_friends": 0,
+                "full_synced": 0,
+                "delta_synced": 0,
+                "failed": [],
+                "skipped": True,
+            }
+        friends = self.friend_service.get_all_mutual_friends(force_refresh=True)
+        full_synced = 0
+        delta_synced = 0
+        failed: List[Dict[str, str]] = []
+        for friend in friends:
+            uid = str(friend.uid or "").strip()
+            if not uid:
+                continue
+            try:
+                latest_archived = self.chat_service.repository.get_latest_message(uid=uid)
+                archive_newest_ms = int((latest_archived or {}).get("msg_time_ms") or 0)
+                stop_at_ms = max(
+                    archive_newest_ms,
+                    self.chat_service.get_chat_archive_cursor_ms(uid),
+                    self.playlist_service.get_song_archive_cursor_ms(uid),
+                )
+                if stop_at_ms <= 0:
+                    self.chat_service.sync_full_history_backfill(uid=uid, limit=limit)
+                    full_synced += 1
+                else:
+                    self.chat_service.sync_recent_history_delta(
+                        uid=uid,
+                        initial_pages=initial_pages,
+                        limit=limit,
+                        stop_at_ms=stop_at_ms,
+                    )
+                    delta_synced += 1
+                self.chat_service.sync_chat_archive_cursor_to_latest_archived(uid)
+                self.playlist_service.sync_song_archive_cursor_to_latest_archived(uid)
+            except Exception as exc:
+                failed.append({"uid": uid, "name": friend.nickname, "error": str(exc)})
+        self.config_store.update(
+            auto_archive_initialized=True,
+            auto_archive_last_run=time.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        self._invalidate_relation_cache()
+        self.state_changed.emit()
         return {
             "friends": friends,
             "total_friends": len(friends),
@@ -508,8 +566,6 @@ class AppController(QtCore.QObject):
     @staticmethod
     def _normalize_insight_mode(mode: str) -> str:
         normalized = (mode or "").strip().lower()
-        if normalized in {"style", "风格", "风格版"}:
-            return "style"
         if normalized in {"commentary", "comment", "评论", "评论版"}:
             return "commentary"
         if normalized in {"annual", "year", "年度", "年度报告", "年度报告版"}:

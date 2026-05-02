@@ -202,9 +202,26 @@ class ChatArchiveRepository:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS song_genre_cache (
+                    song_key TEXT PRIMARY KEY,
+                    song_id TEXT NOT NULL DEFAULT '',
+                    song_name TEXT NOT NULL DEFAULT '',
+                    artist_name TEXT NOT NULL DEFAULT '',
+                    canonical_genre TEXT NOT NULL DEFAULT '',
+                    confidence REAL NOT NULL DEFAULT 0,
+                    source TEXT NOT NULL DEFAULT '',
+                    raw_tags_json TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT '',
+                    resolved_at TEXT NOT NULL
+                )
+                """
+            )
             connection.execute("CREATE INDEX IF NOT EXISTS idx_messages_uid_time ON messages(uid, msg_time_ms)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_messages_uid_type_time ON messages(uid, msg_type, msg_time_ms)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_feature_message_state_uid_scope ON feature_message_state(uid, feature_scope)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_song_genre_cache_song_id ON song_genre_cache(song_id)")
             connection.commit()
 
     def upsert_messages(self, uid: str, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -372,6 +389,30 @@ class ChatArchiveRepository:
             )
             connection.commit()
 
+    def advance_consumption_state(
+        self,
+        uid: str,
+        feature_scope: str,
+        last_consumed_msg_id: str,
+        last_consumed_msg_time_ms: int,
+        last_consumed_msg_time_str: str,
+    ) -> bool:
+        current = self.get_consumption_state(uid=uid, feature_scope=feature_scope)
+        current_time_ms = int((current or {}).get("last_consumed_msg_time_ms") or 0)
+        current_msg_id = str((current or {}).get("last_consumed_msg_id") or "")
+        next_time_ms = int(last_consumed_msg_time_ms or 0)
+        next_msg_id = str(last_consumed_msg_id or "")
+        if current and (next_time_ms, next_msg_id) <= (current_time_ms, current_msg_id):
+            return False
+        self.save_consumption_state(
+            uid=uid,
+            feature_scope=feature_scope,
+            last_consumed_msg_id=next_msg_id,
+            last_consumed_msg_time_ms=next_time_ms,
+            last_consumed_msg_time_str=str(last_consumed_msg_time_str or ""),
+        )
+        return True
+
     def mark_messages_consumed(self, uid: str, feature_scope: str, msg_ids: List[str]) -> None:
         if not msg_ids:
             return
@@ -402,6 +443,22 @@ class ChatArchiveRepository:
             "oldest_archived_time": row["oldest_archived_time"] if row else None,
             "newest_archived_time": row["newest_archived_time"] if row else None,
         }
+
+    def get_latest_message(self, uid: str, msg_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        query = """
+            SELECT uid, msg_id, msg_time_ms, msg_time_str, direction, sender_uid, sender_name,
+                   msg_type, text_content, song_id, song_name, artist_name, raw_msg_json, archived_at
+            FROM messages
+            WHERE uid = ?
+        """
+        params: List[Any] = [uid]
+        if msg_type:
+            query += " AND msg_type = ?"
+            params.append(msg_type)
+        query += " ORDER BY msg_time_ms DESC, msg_id DESC LIMIT 1"
+        with closing(self._connect()) as connection:
+            row = connection.execute(query, params).fetchone()
+        return dict(row) if row else None
 
     def get_latest_sender_name(self, uid: str, direction: str) -> Optional[str]:
         with closing(self._connect()) as connection:
@@ -508,3 +565,80 @@ class ChatArchiveRepository:
         with closing(self._connect()) as connection:
             rows = connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
+
+    @staticmethod
+    def build_song_cache_key(song_id: str = "", song_name: str = "", artist_name: str = "") -> str:
+        normalized_song_id = str(song_id or "").strip()
+        if normalized_song_id:
+            return f"id::{normalized_song_id}"
+        normalized_name = str(song_name or "").strip().lower()
+        normalized_artist = str(artist_name or "").strip().lower()
+        return f"meta::{normalized_name}::{normalized_artist}"
+
+    def get_song_genre_cache(self, song_id: str = "", song_name: str = "", artist_name: str = "") -> Optional[Dict[str, Any]]:
+        song_key = self.build_song_cache_key(song_id=song_id, song_name=song_name, artist_name=artist_name)
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                """
+                SELECT song_key, song_id, song_name, artist_name, canonical_genre,
+                       confidence, source, raw_tags_json, status, resolved_at
+                FROM song_genre_cache
+                WHERE song_key = ?
+                """,
+                (song_key,),
+            ).fetchone()
+        if not row:
+            return None
+        payload = dict(row)
+        try:
+            payload["raw_tags"] = json.loads(str(payload.get("raw_tags_json") or "[]"))
+        except json.JSONDecodeError:
+            payload["raw_tags"] = []
+        return payload
+
+    def save_song_genre_cache(
+        self,
+        *,
+        song_id: str,
+        song_name: str,
+        artist_name: str,
+        canonical_genre: str,
+        confidence: float,
+        source: str,
+        raw_tags: List[str],
+        status: str,
+    ) -> None:
+        song_key = self.build_song_cache_key(song_id=song_id, song_name=song_name, artist_name=artist_name)
+        resolved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with closing(self._connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO song_genre_cache (
+                    song_key, song_id, song_name, artist_name, canonical_genre,
+                    confidence, source, raw_tags_json, status, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(song_key) DO UPDATE SET
+                    song_id=excluded.song_id,
+                    song_name=excluded.song_name,
+                    artist_name=excluded.artist_name,
+                    canonical_genre=excluded.canonical_genre,
+                    confidence=excluded.confidence,
+                    source=excluded.source,
+                    raw_tags_json=excluded.raw_tags_json,
+                    status=excluded.status,
+                    resolved_at=excluded.resolved_at
+                """,
+                (
+                    song_key,
+                    str(song_id or "").strip(),
+                    str(song_name or "").strip(),
+                    str(artist_name or "").strip(),
+                    str(canonical_genre or "").strip(),
+                    float(confidence or 0.0),
+                    str(source or "").strip(),
+                    json.dumps(list(raw_tags or []), ensure_ascii=False),
+                    str(status or "").strip(),
+                    resolved_at,
+                ),
+            )
+            connection.commit()

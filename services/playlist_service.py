@@ -14,6 +14,7 @@ MESSAGE_WINDOW_SIZE = 30
 LIVE_HISTORY_REQUEST_LIMIT = 50
 SONG_SHARE_FEATURE_SCOPE = "song_share"
 PLAYLIST_GENERATION_FEATURE_SCOPE = "playlist_generation"
+SONG_ARCHIVE_CURSOR_SCOPE = "song_archive_cursor"
 DEFAULT_SHADOW_PLAYLIST_NAME = "网易云影子歌单"
 
 
@@ -543,13 +544,41 @@ class PlaylistService:
         if not song_messages:
             return
         latest_message = max(song_messages, key=lambda item: (int(item.get("msg_time_ms") or 0), str(item.get("msg_id") or "")))
-        self.chat_repository.save_consumption_state(
+        self.chat_repository.advance_consumption_state(
             uid=uid,
             feature_scope=feature_scope,
             last_consumed_msg_id=str(latest_message.get("msg_id") or ""),
             last_consumed_msg_time_ms=int(latest_message.get("msg_time_ms") or 0),
             last_consumed_msg_time_str=str(latest_message.get("msg_time_str") or ""),
         )
+
+    def advance_song_archive_cursor(self, uid: str, song_messages: List[Dict[str, Any]]) -> None:
+        if not song_messages:
+            return
+        latest_message = max(song_messages, key=lambda item: (int(item.get("msg_time_ms") or 0), str(item.get("msg_id") or "")))
+        self.chat_repository.advance_consumption_state(
+            uid=uid,
+            feature_scope=SONG_ARCHIVE_CURSOR_SCOPE,
+            last_consumed_msg_id=str(latest_message.get("msg_id") or ""),
+            last_consumed_msg_time_ms=int(latest_message.get("msg_time_ms") or 0),
+            last_consumed_msg_time_str=str(latest_message.get("msg_time_str") or ""),
+        )
+
+    def sync_song_archive_cursor_to_latest_archived(self, uid: str) -> None:
+        latest_message = self.chat_repository.get_latest_message(uid=uid, msg_type="song")
+        if not latest_message:
+            return
+        self.chat_repository.advance_consumption_state(
+            uid=uid,
+            feature_scope=SONG_ARCHIVE_CURSOR_SCOPE,
+            last_consumed_msg_id=str(latest_message.get("msg_id") or ""),
+            last_consumed_msg_time_ms=int(latest_message.get("msg_time_ms") or 0),
+            last_consumed_msg_time_str=str(latest_message.get("msg_time_str") or ""),
+        )
+
+    def get_song_archive_cursor_ms(self, uid: str) -> int:
+        state = self.chat_repository.get_consumption_state(uid=uid, feature_scope=SONG_ARCHIVE_CURSOR_SCOPE)
+        return int((state or {}).get("last_consumed_msg_time_ms") or 0)
 
     def query_song_shares(
         self,
@@ -581,6 +610,7 @@ class PlaylistService:
             end_date=end_date if query_mode in {"date", "range"} else None,
             incremental_feature_scope=PLAYLIST_GENERATION_FEATURE_SCOPE,
         )
+        self.advance_song_archive_cursor(uid=uid, song_messages=items)
         return {
             "items": items,
             "summary": {
@@ -696,6 +726,7 @@ class PlaylistService:
         }
         self.cache_store.save_last_build(final_payload)
         self.mark_song_messages_consumed(uid=uid, feature_scope=PLAYLIST_GENERATION_FEATURE_SCOPE, song_messages=sequence)
+        self.advance_song_archive_cursor(uid=uid, song_messages=sequence)
         return final_payload
 
     def get_last_build_record(self) -> Optional[Dict[str, Any]]:

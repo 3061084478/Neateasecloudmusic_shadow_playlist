@@ -614,8 +614,25 @@ class WebBridge(QtCore.QObject):
             friends = result.get("friends")
             if isinstance(friends, list):
                 self.controller.apply_all_friends(friends)
+            response = dict(result)
+            response.pop("friends", None)
             self._append_log("已执行全量归档重建。")
-            return _json_ok(result)
+            return _json_ok(response)
+        except Exception as exc:
+            self._set_error(str(exc))
+            return _json_error(str(exc))
+
+    @QtCore.Slot(result=str)
+    def requestGlobalArchiveSync(self) -> str:
+        try:
+            result = self.controller.archive_all_friends_from_cursors()
+            friends = result.get("friends")
+            if isinstance(friends, list):
+                self.controller.apply_all_friends(friends)
+            response = dict(result)
+            response.pop("friends", None)
+            self._append_log("已执行全好友归档。")
+            return _json_ok(response)
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))

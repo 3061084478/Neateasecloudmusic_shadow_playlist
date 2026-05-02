@@ -54,13 +54,15 @@ class AnalyticsServiceTests(unittest.TestCase):
         self.assertIn("relation_temperature", snapshot)
         self.assertIn("cover_line", snapshot)
         self.assertIn("relation_theme_color", snapshot)
-        self.assertIn("style_radar", snapshot)
         self.assertIn("first_introduced_artist", snapshot)
         self.assertIn("silence_and_burst", snapshot)
         self.assertIn("timeline_visual", snapshot)
+        self.assertIn("artist_portrait", snapshot)
+        self.assertIn("me_top_artists", snapshot["artist_portrait"])
         self.assertTrue(snapshot["timeline_visual"].get("phases"))
         self.assertTrue(snapshot["timeline_visual"].get("events"))
-        self.assertIn("genre_confidence", snapshot["top_genres"][0])
+        self.assertEqual(snapshot["top_genres"], [])
+        self.assertEqual(snapshot["top_moods"], [])
         self.assertTrue(snapshot["evidence_tracks"])
         self.assertIn("reason_tag", snapshot["evidence_tracks"][0])
         self.assertIn("support_for", snapshot["evidence_tracks"][0])
@@ -118,6 +120,7 @@ class AnalyticsServiceTests(unittest.TestCase):
         self.assertIn("friend_style", dual)
         self.assertTrue(snap_a.get("personality_cards"))
         self.assertEqual(len(global_snapshot.get("top_temperature_friends", [])), 2)
+        self.assertIn("artist_overview", self_snapshot)
         annual = self.service.build_annual_review([snap_a, snap_b], global_snapshot, year=2026)
         self.assertEqual(int(annual.get("year") or 0), 2026)
         self.assertIn("summary", annual)
@@ -141,6 +144,33 @@ class AnalyticsServiceTests(unittest.TestCase):
         self.assertEqual(len(filtered_2025), 1)
         years = self.service.list_available_years([uid])
         self.assertEqual(years, [2025, 2026])
+
+    def test_self_artist_overview_uses_global_friend_and_self_sets(self) -> None:
+        uid_a = "5001"
+        uid_b = "5002"
+        rows_a = [
+            self._message(uid_a, "a1", "2026-04-01 21:00:00", "song", "friend", "Song 1", "Logic"),
+            self._message(uid_a, "a2", "2026-04-02 21:00:00", "song", "self", "Song 2", "JID"),
+            self._message(uid_a, "a3", "2026-04-03 21:00:00", "song", "self", "Song 3", "Common A"),
+        ]
+        rows_b = [
+            self._message(uid_b, "b1", "2026-04-01 21:00:00", "song", "friend", "Song 4", "Offset"),
+            self._message(uid_b, "b2", "2026-04-02 21:00:00", "song", "friend", "Song 5", "Common A"),
+            self._message(uid_b, "b3", "2026-04-03 21:00:00", "song", "self", "Song 6", "Ty Dolla $ign"),
+        ]
+        self.service.repository.upsert_messages(uid_a, rows_a)
+        self.service.repository.upsert_messages(uid_b, rows_b)
+
+        snap_a = self.service.build_friend_snapshot(uid_a, "好友A", "all")
+        snap_b = self.service.build_friend_snapshot(uid_b, "好友B", "all")
+        global_snapshot = self.service.build_global_snapshot([snap_a, snap_b], "all")
+        self_snapshot = self.service.build_self_snapshot([snap_a, snap_b], global_snapshot, "我", "all")
+        overview = self_snapshot.get("artist_overview") or {}
+
+        self.assertEqual((overview.get("all_friends_top_artists") or [])[0]["name"], "Logic")
+        self.assertEqual((overview.get("my_top_artists") or [])[0]["name"], "JID")
+        shared_names = [item.get("name") for item in (overview.get("shared_top_artists") or [])]
+        self.assertIn("Common A", shared_names)
 
 
 if __name__ == "__main__":

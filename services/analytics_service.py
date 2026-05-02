@@ -17,61 +17,6 @@ LANGUAGE_PATTERNS = {
     "英语": re.compile(r"[A-Za-z]"),
 }
 
-GENRE_RULES: list[tuple[str, tuple[str, ...]]] = [
-    ("Hip-Hop/Rap", ("rap", "hiphop", "hip-hop", "trap", "drill", "boom bap", "说唱", "饶舌")),
-    ("Rock", ("rock", "摇滚", "metal", "朋克", "punk")),
-    ("R&B/Soul", ("r&b", "rb", "soul", "neo soul")),
-    ("Electronic", ("electro", "edm", "house", "techno", "电子")),
-    ("Jazz/Blues", ("jazz", "blues", "爵士", "蓝调")),
-    ("民谣", ("folk", "民谣", "acoustic", "木吉他")),
-    ("流行", ("pop", "流行")),
-    ("古典/纯音乐", ("classical", "instrumental", "纯音乐", "钢琴", "交响")),
-]
-
-GENRE_ARTIST_HINTS: dict[str, str] = {
-    "offset": "Hip-Hop/Rap",
-    "jid": "Hip-Hop/Rap",
-    "logic": "Hip-Hop/Rap",
-    "ty dolla sign": "Hip-Hop/Rap",
-    "kendrick lamar": "Hip-Hop/Rap",
-    "drake": "Hip-Hop/Rap",
-    "j. cole": "Hip-Hop/Rap",
-    "j cole": "Hip-Hop/Rap",
-    "eminem": "Hip-Hop/Rap",
-    "travis scott": "Hip-Hop/Rap",
-    "future": "Hip-Hop/Rap",
-    "migos": "Hip-Hop/Rap",
-    "21 savage": "Hip-Hop/Rap",
-    "metro boomin": "Hip-Hop/Rap",
-    "nas": "Hip-Hop/Rap",
-    "jay-z": "Hip-Hop/Rap",
-    "jay z": "Hip-Hop/Rap",
-    "kanye west": "Hip-Hop/Rap",
-    "a$ap": "Hip-Hop/Rap",
-    "lil ": "Hip-Hop/Rap",
-}
-
-MOOD_RULES: list[tuple[str, tuple[str, ...]]] = [
-    ("治愈", ("sun", "暖", "光", "温柔", "治愈", "希望")),
-    ("压抑", ("sad", "blue", "孤独", "失落", "雨夜", "压抑")),
-    ("热烈", ("dance", "party", "燃", "热烈", "爆裂", "狂欢")),
-    ("浪漫", ("love", "romance", "心动", "告白", "浪漫")),
-    ("沉思", ("night", "dream", "慢", "沉思", "迷雾", "月")),
-    ("反叛", ("rebel", "fight", "反叛", "怒", "battle", "riot")),
-]
-
-RELATION_THEME_BY_GENRE: dict[str, str] = {
-    "Hip-Hop/Rap": "#7a68ff",
-    "Rock": "#ff9d4d",
-    "R&B/Soul": "#ff6f9a",
-    "Electronic": "#55d6ff",
-    "Jazz/Blues": "#c9a96b",
-    "民谣": "#8fd29f",
-    "流行": "#7fd3ff",
-    "古典/纯音乐": "#c6b4ff",
-}
-
-
 @dataclass(frozen=True)
 class WindowRange:
     key: str
@@ -177,42 +122,6 @@ class AnalyticsService:
         return "其他"
 
     @staticmethod
-    def _infer_from_rules(text: str, rules: Iterable[tuple[str, tuple[str, ...]]], fallback: str) -> str:
-        lower = text.lower()
-        for label, keywords in rules:
-            if any(keyword.lower() in lower for keyword in keywords):
-                return label
-        return fallback
-
-    @staticmethod
-    def _infer_genre(text: str) -> tuple[str, float, str]:
-        lower = text.lower()
-        for artist_token, genre_label in GENRE_ARTIST_HINTS.items():
-            if artist_token in lower:
-                return genre_label, 0.82, "artist_hint"
-        best_label = "其他/待确认"
-        best_hits = 0
-        second_hits = 0
-        for label, keywords in GENRE_RULES:
-            hits = 0
-            for keyword in keywords:
-                token = keyword.lower()
-                if token in lower:
-                    hits += 1
-            if hits > best_hits:
-                second_hits = best_hits
-                best_hits = hits
-                best_label = label
-            elif hits > second_hits:
-                second_hits = hits
-        if best_hits <= 0:
-            return "其他/待确认", 0.2, "fallback"
-        confidence = min(0.96, 0.48 + best_hits * 0.18 + max(0, best_hits - second_hits) * 0.08)
-        if confidence < 0.45:
-            return "其他/待确认", confidence, "fallback"
-        return best_label, round(confidence, 3), "rule"
-
-    @staticmethod
     def _entropy(counter: Counter[str]) -> float:
         total = sum(counter.values())
         if total <= 0:
@@ -289,8 +198,7 @@ class AnalyticsService:
         relation_temp = snapshot.get("relation_temperature") or {}
         label = str(relation_temp.get("label") or "关系未定")
         trend = str(snapshot.get("trend_conclusion") or "互动节奏尚未稳定。")
-        top_genre = str((snapshot.get("top_genres") or [{}])[0].get("name") or "风格未稳定")
-        return f"{label} · {top_genre}主轴。{trend}"
+        return f"{label} · {trend}"
 
     @staticmethod
     def _build_first_introduced_artist(song_rows: List[Dict[str, Any]]) -> str:
@@ -330,27 +238,7 @@ class AnalyticsService:
 
     @staticmethod
     def _pick_relation_theme_color(snapshot: Dict[str, Any]) -> str:
-        top_genre = str((snapshot.get("top_genres") or [{}])[0].get("name") or "")
-        return RELATION_THEME_BY_GENRE.get(top_genre, "#7fd3ff")
-
-    @staticmethod
-    def _build_style_radar(snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
-        genre_map = {str(item.get("name") or ""): int(item.get("count") or 0) for item in snapshot.get("top_genres", [])}
-        total = max(1, int(snapshot.get("song_share_count_total") or 0))
-        def _ratio(name: str) -> int:
-            return int(round(min(1.0, genre_map.get(name, 0) / total) * 100))
-        pop_value = _ratio("流行")
-        rap_value = _ratio("Hip-Hop/Rap")
-        rock_value = _ratio("Rock")
-        elec_value = _ratio("Electronic")
-        folk_value = max(_ratio("民谣"), _ratio("古典/纯音乐"))
-        return [
-            {"name": "流行", "value": pop_value},
-            {"name": "说唱", "value": rap_value},
-            {"name": "摇滚", "value": rock_value},
-            {"name": "电子", "value": elec_value},
-            {"name": "民谣", "value": folk_value},
-        ]
+        return "#7fd3ff"
 
     @staticmethod
     def _enrich_evidence_tracks(snapshot: Dict[str, Any], evidence_tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -382,10 +270,6 @@ class AnalyticsService:
 
     def _build_song_features(self, song_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         artist_counter: Counter[str] = Counter()
-        genre_score_counter: Counter[str] = Counter()
-        genre_raw_counter: Counter[str] = Counter()
-        genre_conf_sum: dict[str, float] = defaultdict(float)
-        mood_counter: Counter[str] = Counter()
         language_counter: Counter[str] = Counter()
         decade_counter: Counter[str] = Counter()
         hour_counter: Counter[int] = Counter()
@@ -407,29 +291,14 @@ class AnalyticsService:
 
             song_id = str(row.get("song_id") or "").strip()
             song_name = str(row.get("song_name") or "").strip()
-            unique_songs.add(song_id or song_name or str(row.get("msg_id") or ""))
+            song_key = self.repository.build_song_cache_key(song_id=song_id, song_name=song_name, artist_name=str(row.get("artist_name") or ""))
+            unique_songs.add(song_key)
 
             text_content = str(row.get("text_content") or "").strip()
             raw_msg = str(row.get("raw_msg_json") or "")
             raw_hint = raw_msg[:1600] if raw_msg else ""
             text = f"{song_name} {' '.join(artists)} {text_content} {raw_hint}"
-            genre, genre_confidence, _genre_source = self._infer_genre(text)
-            if genre_confidence < 0.45:
-                genre = "其他/待确认"
-            if genre_confidence >= 0.75:
-                genre_weight = 1.0
-            elif genre_confidence >= 0.60:
-                genre_weight = 0.85
-            elif genre_confidence >= 0.45:
-                genre_weight = 0.65
-            else:
-                genre_weight = 0.35
-            mood = self._infer_from_rules(text, MOOD_RULES, "沉思")
             language = self._infer_language(text)
-            genre_score_counter[genre] += genre_weight
-            genre_raw_counter[genre] += 1
-            genre_conf_sum[genre] += float(genre_confidence)
-            mood_counter[mood] += 1
             language_counter[language] += 1
 
         unique_artist_count = len(artist_counter)
@@ -441,8 +310,8 @@ class AnalyticsService:
         unique_song_ratio = unique_song_count / total_songs if total_songs else 0.0
         discovery_index = self._clamp((unique_artist_ratio + unique_song_ratio + niche_ratio) / 3)
 
-        entropy = self._entropy(genre_score_counter)
-        max_entropy = math.log(max(1, len(genre_score_counter)))
+        entropy = self._entropy(artist_counter)
+        max_entropy = math.log(max(1, len(artist_counter)))
         if max_entropy <= 0:
             stability_score = 0.5 if total_songs else 0.0
         else:
@@ -478,23 +347,13 @@ class AnalyticsService:
                 "explain": "只出现一次的歌手越多，冷门发掘倾向越强。",
             },
         ]
-        top_genres: List[Dict[str, Any]] = []
-        for name, weighted_score in genre_score_counter.most_common(5):
-            raw_count = int(genre_raw_counter.get(name, 0))
-            avg_confidence = genre_conf_sum.get(name, 0.0) / max(1, raw_count)
-            top_genres.append(
-                {
-                    "name": name,
-                    "count": raw_count,
-                    "weighted_score": round(float(weighted_score), 3),
-                    "genre_confidence": round(avg_confidence, 3),
-                }
-            )
         return {
             "total_songs": total_songs,
             "top_artists": self._counter_top(artist_counter, limit=5),
-            "top_genres": top_genres,
-            "top_moods": self._counter_top(mood_counter, limit=5),
+            "artist_distribution_all": self._counter_top(artist_counter, limit=max(5, len(artist_counter))),
+            "unique_artist_count": unique_artist_count,
+            "top_genres": [],
+            "top_moods": [],
             "top_languages": self._counter_top(language_counter, limit=5),
             "top_decades": self._counter_top(decade_counter, limit=5),
             "hour_heatmap": hour_heatmap,
@@ -548,7 +407,6 @@ class AnalyticsService:
         night_ratio = float(snapshot.get("night_share_ratio") or 0.0)
         discovery_index = float(snapshot.get("discovery_index") or 0.0)
         stability = float(snapshot.get("stability_score") or 0.0)
-        top_genres = [str(item.get("name") or "") for item in snapshot.get("top_genres", []) if item.get("name")]
         top_decades = snapshot.get("top_decades", [])
 
         if night_ratio >= 0.40:
@@ -567,15 +425,6 @@ class AnalyticsService:
                     "score": round(min(1.0, discovery_index * 1.2), 2),
                     "reason": f"发现力指数 {discovery_index:.2f}，说明存在持续探索新歌与新歌手倾向。",
                     "accent": "discovery",
-                }
-            )
-        if any(name == "Hip-Hop/Rap" for name in top_genres):
-            cards.append(
-                {
-                    "tag": "说唱档案管理员",
-                    "score": round(0.72 + min(0.2, discovery_index * 0.2), 2),
-                    "reason": "高频风格中稳定出现 Hip-Hop/Rap，且具备重复回访特征。",
-                    "accent": "genre",
                 }
             )
         if top_decades and str(top_decades[0].get("name") or "").endswith("s"):
@@ -638,6 +487,52 @@ class AnalyticsService:
         shared_names = [name for name in left if name in right]
         shared_names.sort(key=lambda name: left[name] + right[name], reverse=True)
         return shared_names[:limit]
+
+    @staticmethod
+    def _shared_artist_rows(items_a: Iterable[Dict[str, Any]], items_b: Iterable[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
+        left = {str(item.get("name") or "").strip(): int(item.get("count") or 0) for item in items_a if item.get("name")}
+        right = {str(item.get("name") or "").strip(): int(item.get("count") or 0) for item in items_b if item.get("name")}
+        shared_rows: List[Dict[str, Any]] = []
+        for name, left_count in left.items():
+            right_count = right.get(name)
+            if not right_count:
+                continue
+            shared_rows.append(
+                {
+                    "name": name,
+                    "count": left_count + right_count,
+                    "my_count": left_count,
+                    "friend_count": right_count,
+                }
+            )
+        shared_rows.sort(key=lambda item: (int(item.get("count") or 0), str(item.get("name") or "")), reverse=True)
+        return shared_rows[:limit]
+
+    @staticmethod
+    def _build_artist_portrait(
+        total_artists: List[Dict[str, Any]],
+        my_artists: List[Dict[str, Any]],
+        friend_artists: List[Dict[str, Any]],
+        my_artist_distribution: List[Dict[str, Any]],
+        friend_artist_distribution: List[Dict[str, Any]],
+        my_song_count: int,
+        friend_song_count: int,
+        my_artist_count: int,
+        friend_artist_count: int,
+    ) -> Dict[str, Any]:
+        shared = AnalyticsService._shared_artist_rows(my_artist_distribution, friend_artist_distribution, limit=5)
+        return {
+            "me_top_artists": list(my_artists[:5]),
+            "top_artists": list(total_artists[:3]),
+            "friend_top_artists": list(friend_artists[:5]),
+            "shared_top_artists": shared,
+            "shared_artist_names": [str(item.get("name") or "") for item in shared if item.get("name")],
+            "has_shared_artists": bool(shared),
+            "my_song_count": int(my_song_count),
+            "friend_song_count": int(friend_song_count),
+            "my_artist_count": int(my_artist_count),
+            "friend_artist_count": int(friend_artist_count),
+        }
 
     @staticmethod
     def _phase_label(song_count: int, msg_count: int, delta: int) -> str:
@@ -732,14 +627,13 @@ class AnalyticsService:
                 }
             )
         top_artist = str((snapshot.get("top_artists") or [{}])[0].get("name") or "").strip()
-        top_genre = str((snapshot.get("top_genres") or [{}])[0].get("name") or "").strip()
-        if top_artist or top_genre:
+        if top_artist:
             events.append(
                 {
                     "month": str(peak_point.get("month") or "-"),
                     "phase": "记忆点",
                     "title": "关系音乐记忆",
-                    "detail": f"峰值阶段常见歌手 {top_artist or '暂无'}，风格主轴 {top_genre or '待确认'}。",
+                    "detail": f"峰值阶段常见歌手 {top_artist or '暂无'}。",
                     "kind": "memory",
                 }
             )
@@ -782,19 +676,15 @@ class AnalyticsService:
                 "artists": [],
                 "moods": [],
             }
-        shared_genres = [name for name in me_profile.get("genres", []) if name in set(friend_profile.get("genres", []))][:4]
         shared_artists = [name for name in me_profile.get("artists", []) if name in set(friend_profile.get("artists", []))][:4]
-        shared_moods = [name for name in me_profile.get("moods", []) if name in set(friend_profile.get("moods", []))][:3]
-        overlap_score = self._clamp((len(shared_artists) * 0.36 + len(shared_genres) * 0.38 + len(shared_moods) * 0.26) / 4)
+        overlap_score = self._clamp(len(shared_artists) / 4)
         overlap_bars = [
             {"name": "歌手", "value": len(shared_artists)},
-            {"name": "风格", "value": len(shared_genres)},
-            {"name": "情绪", "value": len(shared_moods)},
         ]
         return {
             "shared_artists": shared_artists,
-            "shared_genres": shared_genres,
-            "shared_moods": shared_moods,
+            "shared_genres": [],
+            "shared_moods": [],
             "shared_languages": [],
             "overlap_score": round(overlap_score, 4),
             "overlap_bars": overlap_bars,
@@ -802,28 +692,21 @@ class AnalyticsService:
                 "me": me_profile,
                 "friend": friend_profile,
                 "overlap": {
-                    "genres": shared_genres,
+                    "genres": [],
                     "artists": shared_artists,
-                    "moods": shared_moods,
+                    "moods": [],
                 },
             },
-            "summary": (
-                f"基于你与好友各自发送歌曲的对照，"
-                f"你们在 {('、'.join(shared_genres[:2]) if shared_genres else '风格维度')} 上重合度较高，"
-                f"共同世界重合指数约 {overlap_score * 100:.1f}% 。"
-            ),
+            "summary": f"共同歌手重合指数约 {overlap_score * 100:.1f}%。",
         }
 
     @staticmethod
     def build_dual_perspective(friend_snapshot: Dict[str, Any], global_snapshot: Dict[str, Any]) -> Dict[str, Any]:
-        top_genre = str((friend_snapshot.get("top_genres") or [{}])[0].get("name") or "风格未稳定")
-        top_mood = str((friend_snapshot.get("top_moods") or [{}])[0].get("name") or "情绪未稳定")
         top_artist = str((friend_snapshot.get("top_artists") or [{}])[0].get("name") or "歌手偏好未稳定")
         return {
             "friend_style": {
-                "summary": f"Ta 的分享风格以 {top_genre} 为核心，整体呈现 {top_mood} 的情绪色调。",
+                "summary": f"Ta 的分享里高频出现的歌手是 {top_artist}。",
                 "points": [
-                    f"核心风格：{top_genre}，主情绪：{top_mood}。",
                     f"高频歌手：{top_artist}，稳定度 {float(friend_snapshot.get('stability_score') or 0.0):.2f}。",
                 ],
             },
@@ -886,9 +769,24 @@ class AnalyticsService:
             "top_moods": song_features["top_moods"],
             "discovery_breakdown": song_features["discovery_breakdown"],
             "evidence_tracks": self._build_evidence_tracks(song_rows, limit=5),
+            "artist_portrait": self._build_artist_portrait(
+                total_artists=song_features["top_artists"],
+                my_artists=self_song_features["top_artists"],
+                friend_artists=friend_song_features["top_artists"],
+                my_artist_distribution=self_song_features.get("artist_distribution_all", []),
+                friend_artist_distribution=friend_song_features.get("artist_distribution_all", []),
+                my_song_count=self_song_count,
+                friend_song_count=friend_song_count,
+                my_artist_count=int(self_song_features.get("unique_artist_count") or 0),
+                friend_artist_count=int(friend_song_features.get("unique_artist_count") or 0),
+            ),
             "sender_song_profile": {
                 "friend": self._sender_profile_slice(friend_song_features),
                 "me": self._sender_profile_slice(self_song_features),
+            },
+            "sender_artist_distribution": {
+                "friend": friend_song_features.get("artist_distribution_all", []),
+                "me": self_song_features.get("artist_distribution_all", []),
             },
         }
         snapshot["personality_cards"] = self._build_personality_cards(snapshot)
@@ -898,7 +796,6 @@ class AnalyticsService:
         snapshot["relation_temperature"] = self._build_relation_temperature(snapshot)
         snapshot["relation_theme_color"] = self._pick_relation_theme_color(snapshot)
         snapshot["first_introduced_artist"] = self._build_first_introduced_artist(song_rows)
-        snapshot["style_radar"] = self._build_style_radar(snapshot)
         snapshot["silence_and_burst"] = self._build_silence_and_burst(trend_series)
         snapshot["timeline_visual"] = self.build_timeline_visual(snapshot)
         snapshot["cover_line"] = self._build_relation_cover_line(snapshot)
@@ -918,9 +815,9 @@ class AnalyticsService:
     @staticmethod
     def _sender_profile_slice(features: Dict[str, Any]) -> Dict[str, List[str]]:
         return {
-            "genres": [str(item.get("name") or "") for item in (features.get("top_genres") or [])[:4] if item.get("name")],
+            "genres": [],
             "artists": [str(item.get("name") or "") for item in (features.get("top_artists") or [])[:4] if item.get("name")],
-            "moods": [str(item.get("name") or "") for item in (features.get("top_moods") or [])[:4] if item.get("name")],
+            "moods": [],
         }
 
     @staticmethod
@@ -1114,6 +1011,31 @@ class AnalyticsService:
             },
         }
 
+    def _build_self_artist_overview(self, friend_snapshots: List[Dict[str, Any]]) -> Dict[str, Any]:
+        my_artist_counter: Counter[str] = Counter()
+        friend_artist_counter: Counter[str] = Counter()
+        for snapshot in friend_snapshots:
+            for item in snapshot.get("sender_artist_distribution", {}).get("me", []) or []:
+                name = str(item.get("name") or "").strip()
+                count = int(item.get("count") or 0)
+                if name and count > 0:
+                    my_artist_counter[name] += count
+            for item in snapshot.get("sender_artist_distribution", {}).get("friend", []) or []:
+                name = str(item.get("name") or "").strip()
+                count = int(item.get("count") or 0)
+                if name and count > 0:
+                    friend_artist_counter[name] += count
+        shared_top_artists = self._shared_artist_rows(
+            [{"name": name, "count": count} for name, count in my_artist_counter.items()],
+            [{"name": name, "count": count} for name, count in friend_artist_counter.items()],
+            limit=5,
+        )
+        return {
+            "all_friends_top_artists": self._counter_top(friend_artist_counter, 5),
+            "my_top_artists": self._counter_top(my_artist_counter, 5),
+            "shared_top_artists": shared_top_artists,
+        }
+
     def _build_self_timeline_visual(self, snapshot: Dict[str, Any], window: str) -> Dict[str, Any]:
         trend = [item for item in snapshot.get("trend_series", []) if str(item.get("month") or "")]
         if not trend:
@@ -1232,9 +1154,7 @@ class AnalyticsService:
 
         merged_month: dict[str, Dict[str, int]] = defaultdict(lambda: {"msg_count": 0, "song_count": 0})
         artist_counter: Counter[str] = Counter()
-        genre_counter: Counter[str] = Counter()
         language_counter: Counter[str] = Counter()
-        mood_counter: Counter[str] = Counter()
         decade_counter: Counter[str] = Counter()
         weighted_night_sum = 0.0
         weighted_discovery_sum = 0.0
@@ -1248,9 +1168,7 @@ class AnalyticsService:
                 merged_month[month]["msg_count"] += int(point.get("msg_count") or 0)
                 merged_month[month]["song_count"] += int(point.get("song_count") or 0)
             artist_counter += self._merge_rank_counts(snapshot.get("top_artists", []))
-            genre_counter += self._merge_rank_counts(snapshot.get("top_genres", []))
             language_counter += self._merge_rank_counts(snapshot.get("top_languages", []))
-            mood_counter += self._merge_rank_counts(snapshot.get("top_moods", []))
             decade_counter += self._merge_rank_counts(snapshot.get("top_decades", []))
             song_count = int(snapshot.get("song_share_count_total") or 0)
             weighted_song_base += song_count
@@ -1285,9 +1203,9 @@ class AnalyticsService:
             )[:3],
             "trend_series": month_trend,
             "top_artists": self._counter_top(artist_counter, 5),
-            "top_genres": self._counter_top(genre_counter, 5),
+            "top_genres": [],
             "top_languages": self._counter_top(language_counter, 5),
-            "top_moods": self._counter_top(mood_counter, 5),
+            "top_moods": [],
             "top_decades": self._counter_top(decade_counter, 5),
             "night_share_ratio": round(night_ratio, 4),
             "avg_discovery_index": round(avg_discovery, 4),
@@ -1356,13 +1274,14 @@ class AnalyticsService:
             "top_song_friends": global_snapshot.get("top_song_friends", []),
             "top_temperature_friends": global_snapshot.get("top_temperature_friends", []),
             "top_artists": global_snapshot.get("top_artists", []),
-            "top_genres": global_snapshot.get("top_genres", []),
+            "top_genres": [],
             "top_languages": global_snapshot.get("top_languages", []),
             "top_decades": global_snapshot.get("top_decades", []),
-            "top_moods": global_snapshot.get("top_moods", []),
+            "top_moods": [],
             "trend_series": global_snapshot.get("trend_series", []),
             "trend_conclusion": str(global_snapshot.get("trend_conclusion") or "暂无趋势结论。"),
             "network_block": network_block,
+            "artist_overview": self._build_self_artist_overview(friend_snapshots),
             "evidence_tracks": self._merge_self_evidence_tracks(friend_snapshots, limit=5),
         }
         self_snapshot["timeline_visual"] = self._build_self_timeline_visual(self_snapshot, window)
@@ -1472,25 +1391,13 @@ class AnalyticsService:
         valid = [item for item in friend_snapshots if int(item.get("song_share_count_total") or 0) > 0]
         if len(valid) < 2:
             return []
-        all_genres = sorted({genre.get("name") for item in valid for genre in item.get("top_genres", []) if genre.get("name")})
-
-        def _genre_ratio_map(snapshot: Dict[str, Any]) -> Dict[str, float]:
-            weighted_total = sum(float(item.get("weighted_score") or 0.0) for item in snapshot.get("top_genres", []) if item.get("name"))
-            total = max(1e-6, weighted_total)
-            return {
-                str(item.get("name")): float(item.get("weighted_score") or item.get("count") or 0.0) / total
-                for item in snapshot.get("top_genres", [])
-                if item.get("name")
-            }
-
         vectors: dict[str, List[float]] = {}
         for item in valid:
-            genre_ratio = _genre_ratio_map(item)
             vectors[str(item.get("uid"))] = [
                 float(item.get("night_share_ratio") or 0.0),
                 float(item.get("discovery_index") or 0.0),
                 float(item.get("stability_score") or 0.0),
-            ] + [genre_ratio.get(genre, 0.0) for genre in all_genres]
+            ]
 
         def _cosine(a: List[float], b: List[float]) -> float:
             dot = sum(x * y for x, y in zip(a, b))
@@ -1506,10 +1413,9 @@ class AnalyticsService:
             for right in valid[left_index + 1 :]:
                 right_uid = str(right.get("uid"))
                 score = _cosine(vectors[left_uid], vectors[right_uid])
-                common_genres = []
-                left_genres = {item["name"] for item in left.get("top_genres", []) if item.get("name")}
-                right_genres = {item["name"] for item in right.get("top_genres", []) if item.get("name")}
-                common_genres = sorted(left_genres & right_genres)
+                left_artists = {str(item.get("name") or "") for item in left.get("top_artists", []) if item.get("name")}
+                right_artists = {str(item.get("name") or "") for item in right.get("top_artists", []) if item.get("name")}
+                common_artists = sorted(name for name in (left_artists & right_artists) if name)
                 pairs.append(
                     {
                         "uid_a": left_uid,
@@ -1517,7 +1423,7 @@ class AnalyticsService:
                         "uid_b": right_uid,
                         "name_b": right.get("friend_name"),
                         "score": round(score, 4),
-                        "summary": "、".join(common_genres[:2]) if common_genres else "节奏偏好接近",
+                        "summary": "、".join(common_artists[:2]) if common_artists else "节奏偏好接近",
                     }
                 )
         pairs.sort(key=lambda item: item["score"], reverse=True)
@@ -1537,8 +1443,6 @@ class AnalyticsService:
             "total_msgs": int(snapshot.get("message_count_total") or snapshot.get("message_count") or 0),
             "active_span_days": int(snapshot.get("active_days_total") or 0),
             "top_artist_3": snapshot.get("top_artists", [])[:3],
-            "top_genre_3": snapshot.get("top_genres", [])[:3],
-            "top_mood_3": snapshot.get("top_moods", [])[:3],
             "decade_distribution": snapshot.get("top_decades", [])[:5],
             "language_distribution": snapshot.get("top_languages", [])[:5],
             "night_ratio": float(snapshot.get("night_share_ratio") or 0.0),

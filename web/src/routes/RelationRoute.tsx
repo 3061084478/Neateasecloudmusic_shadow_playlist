@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { AI_MODE_OPTIONS, RelationTab } from "../constants";
-import { ActivityHeatmap, AnnualReviewPanel, ArtistPodiumChart, Avatar, CommonWorldPanel, DualRankPanel, EmptyState, FriendRankPanels, GenreDonutChart, MetricCard, MiniList, MoodGrid, NetworkOrbitCard, SelectField, TextField, TimelineVisualChart } from "../components/primitives";
+import { ActivityHeatmap, AnnualReviewPanel, ArtistOverlapInsight, ArtistPodiumChart, ArtistTopListCard, Avatar, EmptyState, FriendRankPanels, MetricCard, MiniList, NetworkOrbitCard, SelectField, TextField, TimelineVisualChart } from "../components/primitives";
 
 const relationTabStageVariants = {
   initial: (direction: number) => ({
@@ -135,6 +135,11 @@ export function RelationRoute({
   ];
   const relationYearOptions = buildYearOptions(relationPayload?.available_years || []);
   const structureMetrics = buildStructureMetrics(selfData);
+  const friendPortrait = friendData?.artist_portrait || {};
+  const selfArtistOverview = selfData?.artist_overview || {};
+  const overviewFriendSharedArtists = (friendPortrait?.shared_top_artists || []).slice(0, 2).map((item: any) => item?.name).filter(Boolean).join("、") || "暂无";
+  const overviewSelfSharedArtists = (selfArtistOverview?.shared_top_artists || []).slice(0, 2).map((item: any) => item?.name).filter(Boolean).join("、") || "暂无";
+  const overviewSelfTopArtist = selfArtistOverview?.my_top_artists?.[0]?.name || "暂无";
   const relationTabOrder: RelationTab[] = ["overview", "friend", "self", "reports"];
   const relationTabDirection = Math.max(0, relationTabOrder.indexOf(relationTab));
   const sectionVariants = {
@@ -219,20 +224,36 @@ export function RelationRoute({
                 </div>
               </section>
 
-              <section className="panel current-friend-overview">
-                <div className="current-friend-overview-head">
-                  <Avatar avatarUrl={friendData?.avatar_url} name={friendData?.friend_name} size={56} />
-                  <div>
-                    <h3>{friendData?.friend_name || currentFriend?.nickname || "未选择好友"}</h3>
-                    <div className="current-friend-meta">
-                      <span>信息 {friendData?.message_count_total || 0} 条</span>
-                      <span>歌曲 {friendData?.song_share_count_total || 0} 首</span>
-                      <span>共同 top 风格：{friendData?.top_genres?.[0]?.name || "暂无"}</span>
-                      <span>共同 top 歌手：{friendData?.top_artists?.[0]?.name || "暂无"}</span>
+              <div className="overview-profile-stack">
+                <section className="panel current-friend-overview">
+                  <div className="current-friend-overview-head">
+                    <Avatar avatarUrl={friendData?.avatar_url} name={friendData?.friend_name} size={56} />
+                    <div>
+                      <h3>{friendData?.friend_name || currentFriend?.nickname || "未选择好友"}</h3>
+                      <div className="current-friend-meta">
+                        <span>信息 {friendData?.message_count_total || 0} 条</span>
+                        <span>歌曲 {friendData?.song_share_count_total || 0} 首</span>
+                        <span>好友分享歌手 top1：{friendPortrait?.friend_top_artists?.[0]?.name || "暂无"}</span>
+                        <span>共同歌手：{overviewFriendSharedArtists}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </section>
+                </section>
+
+                <section className="panel current-friend-overview self-overview-card">
+                  <div className="current-friend-overview-head">
+                    <Avatar avatarUrl={selfData?.account_avatar_url} name={selfData?.account_name || relationPayload?.self?.account_name} size={56} />
+                    <div>
+                      <h3>{selfData?.account_name || relationPayload?.self?.account_name || "我"}</h3>
+                      <div className="current-friend-meta">
+                        <span>社交标签：{selfData?.social_tag || "暂无"}</span>
+                        <span>我最爱分享的歌手：{overviewSelfTopArtist}</span>
+                        <span>全部好友共同歌手：{overviewSelfSharedArtists}</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
             </motion.div>
           ) : null}
 
@@ -294,35 +315,26 @@ export function RelationRoute({
                 <h3>音乐画像</h3>
               </div>
             </div>
-            <div className="portrait-three-up">
-              <div className="relation-chart-card portrait-genres">
-                <div className="panel-head compact">
-                  <div>
-                    <h3>Top 风格</h3>
-                  </div>
-                </div>
-                <GenreDonutChart items={friendData?.top_genres} />
-              </div>
-              <div className="relation-chart-card portrait-moods">
-                <div className="panel-head compact">
-                  <div>
-                    <h3>Top 情绪</h3>
-                  </div>
-                </div>
-                <MoodGrid items={friendData?.top_moods} />
-              </div>
-              <div className="relation-chart-card portrait-artists">
+            <div className="portrait-three-up artist-portrait-grid">
+              <ArtistTopListCard title="我的分享歌手" items={friendPortrait?.me_top_artists || []} accent="artist" />
+              <div className="relation-chart-card portrait-artists portrait-top-artists">
                 <div className="panel-head compact">
                   <div>
                     <h3>Top 歌手</h3>
                   </div>
                 </div>
-                <ArtistPodiumChart items={friendData?.top_artists} />
+                <ArtistPodiumChart items={friendPortrait?.top_artists || []} />
               </div>
+              <ArtistTopListCard title="好友的分享歌手" items={friendPortrait?.friend_top_artists || []} accent="friend" />
             </div>
-            <div className="portrait-common-world">
-              <CommonWorldPanel data={friendData?.common_world} />
-            </div>
+            <ArtistOverlapInsight
+              title="歌手交集概况"
+              sharedArtists={friendPortrait?.shared_top_artists || []}
+              mySongCount={Number(friendPortrait?.my_song_count || 0)}
+              friendSongCount={Number(friendPortrait?.friend_song_count || 0)}
+              myArtistCount={Number(friendPortrait?.my_artist_count || 0)}
+              friendArtistCount={Number(friendPortrait?.friend_artist_count || 0)}
+            />
           </motion.section>
           <motion.section className="panel" variants={blockVariants}>
               <div className="panel-head">
@@ -446,10 +458,19 @@ export function RelationRoute({
           <motion.section className="panel" variants={blockVariants}>
             <div className="panel-head">
               <div>
-                <h3>整体风格与歌手</h3>
+                <h3>歌手总览</h3>
               </div>
             </div>
-            <DualRankPanel genres={selfData?.top_genres || []} artists={selfData?.top_artists || []} />
+            <div className="portrait-three-up artist-portrait-grid">
+              <ArtistTopListCard title="全部好友发的歌手" items={selfArtistOverview?.all_friends_top_artists || []} accent="artist" />
+              <ArtistTopListCard title="我发的歌手" items={selfArtistOverview?.my_top_artists || []} accent="friend" />
+              <ArtistTopListCard
+                title="双方共同歌手"
+                items={selfArtistOverview?.shared_top_artists || []}
+                emptyText="暂无共同歌手"
+                accent="shared"
+              />
+            </div>
           </motion.section>
           <motion.section className="panel" variants={blockVariants}>
             <div className="panel-head">

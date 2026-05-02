@@ -172,7 +172,7 @@ class ReportService:
             f"活跃天数：{snapshot.get('active_days_total', 0)}",
             f"深夜分享比例：{float(snapshot.get('night_share_ratio', 0.0)) * 100:.1f}%",
             f"发现力指数：{float(snapshot.get('discovery_index', 0.0)):.2f}",
-            f"风格稳定度：{float(snapshot.get('stability_score', 0.0)):.2f}",
+            f"稳定度：{float(snapshot.get('stability_score', 0.0)):.2f}",
         ]
         timeline_events = list((snapshot.get("timeline_visual") or {}).get("events") or [])[:4]
         memory_points = [

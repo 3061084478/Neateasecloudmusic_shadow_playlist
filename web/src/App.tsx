@@ -27,8 +27,8 @@ const SHELL_BUTTERFLIES: Array<{ role: ShellButterflyRole; src: string; style: C
     role: "hero",
     src: "brand/scene_butterfly_1.png",
     style: {
-      "--x": "74.2%",
-      "--y": "19.2%",
+      "--x": "75.2%",
+      "--y": "19.9%",
       "--size": "144px",
       "--rotation": "-13deg",
       "--blur": "0.8px",
@@ -586,6 +586,20 @@ function App() {
     });
   }
 
+  async function handleGlobalArchiveSync() {
+    await runBusy("全好友归档", async () => {
+      const payload = await invokeBridge<any>("requestGlobalArchiveSync");
+      invalidateData();
+      await Promise.all([loadHomePayload(true), loadRelationPayload(true)]);
+      const failedCount = Array.isArray(payload?.failed) ? payload.failed.length : 0;
+      if (failedCount > 0) {
+        setToast(`全好友归档完成，失败 ${failedCount} 位。`);
+        return;
+      }
+      setToast(`全好友归档完成，补齐 ${payload?.delta_synced || 0} 位，首次归档 ${payload?.full_synced || 0} 位。`);
+    });
+  }
+
   async function handleGenerateFriendAi() {
     if (!currentFriend?.uid) {
       setToast("请先选择好友。");
@@ -697,7 +711,7 @@ function App() {
       },
       {
         title: "音乐关系",
-        summary: `共同内容：${relationSummary.friend_top_genre || "暂无"} / ${relationSummary.friend_top_artist || "暂无"}`,
+        summary: `共同歌手：${relationSummary.shared_artists || "无"}`,
         detail: `我的社交标签：${relationSummary.self_social_tag || "暂无"}`,
         actions: [
           { label: "单好友画像", onClick: () => { setRelationTab("friend"); void handleNavigate("relation"); } },
@@ -756,6 +770,9 @@ function App() {
               </div>
               {route === "relation" ? (
                 <div className="stage-header-actions">
+                  <button className="secondary-button" onClick={() => void handleGlobalArchiveSync()}>
+                    全好友归档
+                  </button>
                   <button className="secondary-button" onClick={() => void handleRelationRefresh(true)}>
                     刷新分析
                   </button>

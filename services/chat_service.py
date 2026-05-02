@@ -11,6 +11,7 @@ from services.storage import ChatArchiveRepository
 MESSAGE_WINDOW_SIZE = 30
 LIVE_HISTORY_REQUEST_LIMIT = 50
 CHAT_QUERY_FEATURE_SCOPE = "chat_query"
+CHAT_ARCHIVE_CURSOR_SCOPE = "chat_archive_cursor"
 
 
 class ChatService:
@@ -114,13 +115,41 @@ class ChatService:
         if not rows:
             return
         latest_message = max(rows, key=lambda item: (int(item.get("msg_time_ms") or 0), str(item.get("msg_id") or "")))
-        self.repository.save_consumption_state(
+        self.repository.advance_consumption_state(
             uid=uid,
             feature_scope=CHAT_QUERY_FEATURE_SCOPE,
             last_consumed_msg_id=str(latest_message.get("msg_id") or ""),
             last_consumed_msg_time_ms=int(latest_message.get("msg_time_ms") or 0),
             last_consumed_msg_time_str=str(latest_message.get("msg_time_str") or ""),
         )
+
+    def advance_chat_archive_cursor(self, uid: str, rows: List[Dict[str, Any]]) -> None:
+        if not rows:
+            return
+        latest_message = max(rows, key=lambda item: (int(item.get("msg_time_ms") or 0), str(item.get("msg_id") or "")))
+        self.repository.advance_consumption_state(
+            uid=uid,
+            feature_scope=CHAT_ARCHIVE_CURSOR_SCOPE,
+            last_consumed_msg_id=str(latest_message.get("msg_id") or ""),
+            last_consumed_msg_time_ms=int(latest_message.get("msg_time_ms") or 0),
+            last_consumed_msg_time_str=str(latest_message.get("msg_time_str") or ""),
+        )
+
+    def sync_chat_archive_cursor_to_latest_archived(self, uid: str) -> None:
+        latest_message = self.repository.get_latest_message(uid=uid)
+        if not latest_message:
+            return
+        self.repository.advance_consumption_state(
+            uid=uid,
+            feature_scope=CHAT_ARCHIVE_CURSOR_SCOPE,
+            last_consumed_msg_id=str(latest_message.get("msg_id") or ""),
+            last_consumed_msg_time_ms=int(latest_message.get("msg_time_ms") or 0),
+            last_consumed_msg_time_str=str(latest_message.get("msg_time_str") or ""),
+        )
+
+    def get_chat_archive_cursor_ms(self, uid: str) -> int:
+        state = self.repository.get_consumption_state(uid=uid, feature_scope=CHAT_ARCHIVE_CURSOR_SCOPE)
+        return int((state or {}).get("last_consumed_msg_time_ms") or 0)
 
     def sync_friend_history_pages(self, uid: str, pages: int = 3, limit: int = 50) -> Dict[str, Any]:
         if pages < 1:
@@ -174,12 +203,14 @@ class ChatService:
         )
         return summary
 
-    def sync_recent_history_delta(self, uid: str, initial_pages: int = 3, limit: int = 50) -> Dict[str, Any]:
+    def sync_recent_history_delta(self, uid: str, initial_pages: int = 3, limit: int = 50, stop_at_ms: Optional[int] = None) -> Dict[str, Any]:
         archive_range_before = self.repository.get_archive_range(uid)
         previous_newest = archive_range_before.get("newest_archived_time")
         previous_newest_ms = None
         if previous_newest:
             previous_newest_ms = int(datetime.strptime(previous_newest, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+        if stop_at_ms is not None:
+            previous_newest_ms = max(previous_newest_ms or 0, int(stop_at_ms or 0))
 
         request_limit = min(limit, LIVE_HISTORY_REQUEST_LIMIT) if limit > 0 else LIVE_HISTORY_REQUEST_LIMIT
         target_message_count = self._resolve_window_message_limit(initial_pages)
@@ -354,6 +385,7 @@ class ChatService:
             rows.append(row)
 
         self._mark_messages_consumed(uid, rows)
+        self.advance_chat_archive_cursor(uid, rows)
 
         context = self.get_display_context(uid)
         return {

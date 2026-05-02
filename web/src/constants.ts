@@ -49,6 +49,5 @@ export const CHAT_TYPES = [
 
 export const AI_MODE_OPTIONS = [
   { value: "rational", label: "理性版" },
-  { value: "style", label: "风格版" },
   { value: "commentary", label: "评论版" }
 ];

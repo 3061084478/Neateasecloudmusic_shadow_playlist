@@ -668,6 +668,476 @@
   align-items: end;
 }
 
+.artist-portrait-grid {
+  align-items: stretch;
+}
+
+.artist-top-card,
+.artist-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100%;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.artist-top-card::after,
+.artist-summary-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.artist-top-card-artist::after {
+  background: radial-gradient(circle at top right, rgba(125, 211, 252, 0.12), transparent 26%);
+}
+
+.artist-top-card-friend::after {
+  background: radial-gradient(circle at top right, rgba(134, 239, 172, 0.12), transparent 26%);
+}
+
+.artist-top-card-shared::after,
+.artist-summary-card::after {
+  background: radial-gradient(circle at top right, rgba(244, 114, 182, 0.12), transparent 26%);
+}
+
+.artist-top-card:hover,
+.artist-summary-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.artist-top-card:hover::after,
+.artist-summary-card:hover::after {
+  opacity: 1;
+}
+
+.artist-top-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artist-top-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.artist-top-rank {
+  color: var(--text-meta);
+  font-size: var(--fs-meta);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.artist-top-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.artist-top-main strong {
+  color: var(--text-title);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-body-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artist-top-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.artist-top-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.28s ease, filter 0.18s ease, transform 0.18s ease;
+}
+
+.artist-top-fill-artist {
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.95), rgba(125, 211, 252, 0.28));
+}
+
+.artist-top-fill-friend {
+  background: linear-gradient(90deg, rgba(134, 239, 172, 0.95), rgba(134, 239, 172, 0.28));
+}
+
+.artist-top-fill-shared {
+  background: linear-gradient(90deg, rgba(244, 114, 182, 0.95), rgba(244, 114, 182, 0.28));
+}
+
+.artist-top-card:hover .artist-top-fill {
+  filter: brightness(1.08);
+  transform: scaleY(1.08);
+}
+
+.artist-top-count {
+  color: var(--text-title);
+  font-size: var(--fs-note);
+  font-weight: var(--fw-title);
+}
+
+.artist-summary-card {
+  margin-top: 18px;
+}
+
+.artist-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.artist-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.artist-summary-item span {
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+
+.artist-summary-item strong {
+  color: var(--text-title);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-title);
+  line-height: 1.4;
+}
+
+.artist-overlap-card {
+  gap: 18px;
+}
+
+.artist-overlap-visual {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) 180px;
+  gap: 18px;
+  align-items: center;
+}
+
+.artist-overlap-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    background 0.22s ease,
+    box-shadow 0.22s ease,
+    filter 0.22s ease;
+}
+
+.artist-overlap-side::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.artist-overlap-side.is-me::after {
+  background: radial-gradient(circle at top right, rgba(125, 211, 252, 0.16), transparent 58%);
+}
+
+.artist-overlap-side.is-friend::after {
+  background: radial-gradient(circle at top left, rgba(134, 239, 172, 0.16), transparent 58%);
+}
+
+.artist-overlap-side > * {
+  position: relative;
+  z-index: 1;
+  transition:
+    transform 0.22s ease,
+    color 0.22s ease,
+    opacity 0.22s ease,
+    text-shadow 0.22s ease;
+}
+
+.artist-overlap-side span,
+.artist-overlap-side small {
+  color: var(--text-muted);
+}
+
+.artist-overlap-side strong {
+  color: var(--text-title);
+  font-size: 28px;
+  font-weight: var(--fw-display);
+  line-height: 1;
+}
+
+.artist-overlap-side.is-linked {
+  transform: translateY(-5px) scale(1.01);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 22px 36px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  filter: saturate(1.05);
+}
+
+.artist-overlap-side.is-linked::after {
+  opacity: 1;
+}
+
+.artist-overlap-side.is-linked > * {
+  transform: translateY(-2px);
+}
+
+.artist-overlap-side.is-linked strong {
+  text-shadow: 0 0 18px rgba(160, 210, 255, 0.18);
+}
+
+.artist-overlap-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  transition: transform 0.22s ease, filter 0.22s ease;
+}
+
+.artist-overlap-rings {
+  position: relative;
+  width: 100%;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.22s ease, filter 0.22s ease;
+}
+
+.artist-overlap-ring {
+  position: absolute;
+  width: 118px;
+  height: 118px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  transition:
+    transform 0.24s ease,
+    border-color 0.24s ease,
+    box-shadow 0.24s ease,
+    filter 0.24s ease,
+    background 0.24s ease;
+}
+
+.artist-overlap-ring.is-left {
+  left: calc(50% - 96px);
+  background: radial-gradient(circle at 35% 35%, rgba(125, 211, 252, 0.24), rgba(125, 211, 252, 0.06));
+}
+
+.artist-overlap-ring.is-right {
+  right: calc(50% - 96px);
+  background: radial-gradient(circle at 65% 35%, rgba(134, 239, 172, 0.24), rgba(134, 239, 172, 0.06));
+}
+
+.artist-overlap-core {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 132px;
+  height: 132px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 114, 182, 0.22);
+  background: radial-gradient(circle at 50% 35%, rgba(244, 114, 182, 0.22), rgba(244, 114, 182, 0.08));
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.24s ease,
+    border-color 0.24s ease,
+    box-shadow 0.24s ease,
+    filter 0.24s ease,
+    background 0.24s ease;
+}
+
+.artist-overlap-core > * {
+  transition:
+    transform 0.22s ease,
+    color 0.22s ease,
+    text-shadow 0.22s ease;
+}
+
+.artist-overlap-core span {
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+
+.artist-overlap-core strong {
+  color: var(--text-title);
+  font-size: 34px;
+  font-weight: var(--fw-display);
+  line-height: 1;
+}
+
+.artist-overlap-ring.is-linked {
+  transform: translateY(-4px) scale(1.04);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 18px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  filter: brightness(1.08);
+}
+
+.artist-overlap-ring.is-left.is-linked {
+  box-shadow:
+    0 18px 28px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(125, 211, 252, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.artist-overlap-ring.is-right.is-linked {
+  box-shadow:
+    0 18px 28px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(134, 239, 172, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.artist-overlap-center.is-linked {
+  transform: translateY(-3px);
+  filter: saturate(1.05);
+}
+
+.artist-overlap-center.is-linked .artist-overlap-rings {
+  transform: translateY(-2px) scale(1.01);
+}
+
+.artist-overlap-core.is-linked {
+  transform: translateY(-6px) scale(1.045);
+  border-color: rgba(244, 114, 182, 0.32);
+  background: radial-gradient(circle at 50% 35%, rgba(244, 114, 182, 0.28), rgba(244, 114, 182, 0.1));
+  box-shadow:
+    0 18px 30px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(244, 114, 182, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.artist-overlap-core.is-linked > * {
+  transform: translateY(-1px);
+}
+
+.artist-overlap-core.is-linked strong {
+  text-shadow: 0 0 20px rgba(255, 192, 223, 0.18);
+}
+
+.artist-overlap-meter {
+  width: min(320px, 100%);
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  transition:
+    transform 0.22s ease,
+    background 0.22s ease,
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
+}
+
+.artist-overlap-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.92), rgba(244, 114, 182, 0.92), rgba(134, 239, 172, 0.92));
+  transition:
+    width 0.3s ease,
+    transform 0.22s ease,
+    filter 0.22s ease;
+}
+
+.artist-overlap-meter.is-linked {
+  transform: translateY(-3px) scaleX(1.01);
+  background: rgba(255, 255, 255, 0.085);
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.artist-overlap-meter.is-linked .artist-overlap-meter-fill {
+  transform: scaleY(1.18);
+  filter: brightness(1.08);
+}
+
+.artist-overlap-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  transition: transform 0.22s ease, filter 0.22s ease;
+}
+
+.artist-overlap-names .tag-pill,
+.artist-overlap-empty {
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    background 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease,
+    opacity 0.22s ease;
+}
+
+.artist-overlap-names.is-linked {
+  transform: translateY(-2px);
+  filter: saturate(1.05);
+}
+
+.artist-overlap-names.is-linked .tag-pill {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 20px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.artist-overlap-names.is-linked .artist-overlap-empty {
+  color: var(--text-body);
+}
+
+.artist-overlap-empty {
+  color: var(--text-muted);
+  font-size: var(--fs-note);
+}
+
 .portrait-common-world {
   margin-top: 16px;
 }
@@ -710,6 +1180,10 @@
 
 .portrait-artists .podium-chart {
   margin-top: -20px;
+}
+
+.portrait-top-artists {
+  min-height: 100%;
 }
 
 .donut-track {
@@ -1723,6 +2197,12 @@
   transform: scaleY(1.08);
 }
 
+.overview-profile-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .current-friend-overview-head {
   display: flex;
   align-items: center;
@@ -1731,6 +2211,12 @@
 
 .current-friend-overview-head h3 {
   margin-bottom: 6px;
+}
+
+.self-overview-card .current-friend-overview-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .current-friend-meta {
@@ -1992,7 +2478,9 @@
   .annual-review-grid,
   .annual-review-grid.secondary,
   .heatmap-grid,
-  .mood-grid {
+  .mood-grid,
+  .artist-summary-grid,
+  .artist-overlap-visual {
     grid-template-columns: 1fr;
   }
 

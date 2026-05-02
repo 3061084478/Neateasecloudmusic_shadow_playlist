@@ -14,8 +14,6 @@ class InsightServiceTests(unittest.TestCase):
             "total_msgs": 120,
             "active_span_days": 45,
             "top_artist_3": [{"name": "Artist A", "count": 6}],
-            "top_genre_3": [{"name": "Hip-Hop/Rap", "count": 8}],
-            "top_mood_3": [{"name": "热烈", "count": 5}],
             "decade_distribution": [{"name": "2020s", "count": 10}],
             "language_distribution": [{"name": "英语", "count": 12}],
             "night_ratio": 0.35,
@@ -43,7 +41,7 @@ class InsightServiceTests(unittest.TestCase):
         low_payload = dict(self.base_payload)
         low_payload["total_songs"] = 6
         low_payload["active_span_days"] = 3
-        result = self.service.generate_friend_insight(low_payload, "style", config)
+        result = self.service.generate_friend_insight(low_payload, "rational", config)
         self.assertTrue(result["insufficient_data"])
         self.assertIn("样本量较少", result["text"])
 
