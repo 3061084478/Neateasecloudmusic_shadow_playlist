@@ -82,33 +82,27 @@ const SHELL_BUTTERFLIES: Array<{ role: ShellButterflyRole; src: string; style: C
 const routeStageVariants = {
   initial: (direction: number) => ({
     opacity: 0,
-    x: direction >= 0 ? 72 : -72,
-    y: 18,
-    scale: 0.965,
-    rotateY: direction >= 0 ? 12 : -12,
-    filter: "blur(10px)"
+    x: direction >= 0 ? 52 : -52,
+    y: 10,
+    scale: 0.986
   }),
   animate: {
     opacity: 1,
     x: 0,
     y: 0,
     scale: 1,
-    rotateY: 0,
-    filter: "blur(0px)",
     transition: {
-      duration: 0.34,
+      duration: 0.28,
       ease: [0.22, 1, 0.36, 1]
     }
   },
   exit: (direction: number) => ({
     opacity: 0,
-    x: direction >= 0 ? -54 : 54,
-    y: -12,
-    scale: 0.948,
-    rotateY: direction >= 0 ? -8 : 8,
-    filter: "blur(8px)",
+    x: direction >= 0 ? -40 : 40,
+    y: -8,
+    scale: 0.982,
     transition: {
-      duration: 0.24,
+      duration: 0.2,
       ease: [0.4, 0, 1, 1]
     }
   })

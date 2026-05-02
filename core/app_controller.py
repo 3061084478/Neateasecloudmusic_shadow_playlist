@@ -422,7 +422,7 @@ class AppController(QtCore.QObject):
             "skipped": False,
         }
 
-    def archive_all_friends_from_cursors(self, initial_pages: int = 6, limit: int = 50) -> Dict[str, Any]:
+    def archive_all_friends_from_cursors(self, initial_pages: int = 1, limit: int = 50) -> Dict[str, Any]:
         if self.session_state.mode != "real":
             return {
                 "friends": [],

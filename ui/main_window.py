@@ -21,7 +21,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(root)
 
         root_layout = QtWidgets.QVBoxLayout(root)
-        root_layout.setContentsMargins(18, 18, 18, 18)
+        root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
         self.screen_stack = QtWidgets.QStackedWidget()

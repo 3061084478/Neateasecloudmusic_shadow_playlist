@@ -17,6 +17,12 @@ class WebShellPage(QtWidgets.QWidget):
         self.controller = controller
         self._loaded = False
         self._dist_index_path = Path(__file__).resolve().parents[2] / "web" / "dist" / "index.html"
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
+        palette = self.palette()
+        palette.setColor(QtGui.QPalette.Window, QtGui.QColor("#07080a"))
+        self.setPalette(palette)
+        self.setStyleSheet("background:#07080a;")
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -27,6 +33,10 @@ class WebShellPage(QtWidgets.QWidget):
 
         self.web_view = QWebEngineView()
         self.web_view.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
+        self.web_view.setAttribute(QtCore.Qt.WA_OpaquePaintEvent, True)
+        self.web_view.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.web_view.setAutoFillBackground(True)
+        self.web_view.setStyleSheet("background:#07080a;")
         self.web_view.page().setBackgroundColor(QtGui.QColor("#07080a"))
         settings = self.web_view.settings()
         settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)

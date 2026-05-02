@@ -5,33 +5,27 @@ import { ActivityHeatmap, AnnualReviewPanel, ArtistOverlapInsight, ArtistPodiumC
 const relationTabStageVariants = {
   initial: (direction: number) => ({
     opacity: 0,
-    x: direction >= 0 ? 48 : -48,
-    y: 12,
-    scale: 0.975,
-    rotateY: direction >= 0 ? 8 : -8,
-    filter: "blur(8px)"
+    x: direction >= 0 ? 30 : -30,
+    y: 8,
+    scale: 0.988
   }),
   animate: {
     opacity: 1,
     x: 0,
     y: 0,
     scale: 1,
-    rotateY: 0,
-    filter: "blur(0px)",
     transition: {
-      duration: 0.3,
+      duration: 0.24,
       ease: [0.22, 1, 0.36, 1]
     }
   },
   exit: (direction: number) => ({
     opacity: 0,
-    x: direction >= 0 ? -38 : 38,
-    y: -10,
-    scale: 0.964,
-    rotateY: direction >= 0 ? -6 : 6,
-    filter: "blur(6px)",
+    x: direction >= 0 ? -24 : 24,
+    y: -6,
+    scale: 0.986,
     transition: {
-      duration: 0.22,
+      duration: 0.18,
       ease: [0.4, 0, 1, 1]
     }
   })
