@@ -4,10 +4,37 @@
   background: #07080a;
   color: #f5f7fa;
   font-feature-settings: "calt" 1, "kern" 1, "liga" 1, "ss03" 1;
+  --bg-ambient-red: rgba(255, 99, 99, 0.038);
+  --bg-ambient-blue: rgba(138, 201, 255, 0.088);
+  --bg-beam-core: rgba(255, 255, 255, 0.148);
+  --bg-beam-soft: rgba(255, 255, 255, 0.082);
+  --bg-beam-tail: rgba(255, 255, 255, 0.026);
+  --bg-beam-halo: rgba(255, 255, 255, 0.112);
+  --bg-fog-soft: rgba(255, 255, 255, 0.064);
+  --bg-fog-tail: rgba(255, 255, 255, 0.028);
+  --bg-shell-transparency: 0.74;
   --bg-root:
-    radial-gradient(circle at top left, rgba(255, 99, 99, 0.08), transparent 24%),
-    radial-gradient(circle at top right, rgba(85, 179, 255, 0.08), transparent 26%),
-    linear-gradient(180deg, #07080a 0%, #0b0d10 100%);
+    radial-gradient(circle at 12% 8%, var(--bg-ambient-red), transparent 24%),
+    radial-gradient(circle at 89% 7%, var(--bg-ambient-blue), transparent 40%),
+    radial-gradient(circle at 96% 8%, rgba(255, 255, 255, 0.19), transparent 28%),
+    linear-gradient(
+      135deg,
+      transparent 4%,
+      var(--bg-beam-tail) 18%,
+      var(--bg-fog-tail) 26%,
+      var(--bg-fog-soft) 34%,
+      var(--bg-beam-soft) 41%,
+      var(--bg-beam-halo) 46.2%,
+      var(--bg-beam-core) 49.5%,
+      rgba(255, 255, 255, 0.164) 51.1%,
+      var(--bg-beam-halo) 53.8%,
+      var(--bg-beam-soft) 59.5%,
+      var(--bg-fog-soft) 67%,
+      var(--bg-fog-tail) 75%,
+      var(--bg-beam-tail) 82%,
+      transparent 93%
+    ),
+    linear-gradient(180deg, #06070a 0%, #0a0c10 48%, #0c0f14 100%);
   --surface-0: rgba(13, 14, 16, 0.88);
   --surface-1: rgba(16, 17, 17, 0.82);
   --surface-2: rgba(255, 255, 255, 0.02);
@@ -17,6 +44,13 @@
   --text-2: #cdd3db;
   --text-3: #a0a7b1;
   --text-4: #8d949f;
+  --text-5: #717884;
+  --text-title: #fcfdff;
+  --text-body: #e6eaf0;
+  --text-muted: #b8c0cb;
+  --text-meta: #8d949f;
+  --text-dim: #717884;
+  --text-accent: #eef5ff;
   --border-1: rgba(255, 255, 255, 0.06);
   --border-2: rgba(255, 255, 255, 0.08);
   --border-3: rgba(255, 255, 255, 0.16);
@@ -30,6 +64,24 @@
   --shadow-floating:
     0 20px 40px rgba(0, 0, 0, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --fs-display: 32px;
+  --fs-page-title: 26px;
+  --fs-section-title: 21px;
+  --fs-card-title: 17px;
+  --fs-body-lg: 15px;
+  --fs-body: 14px;
+  --fs-note: 13px;
+  --fs-meta: 12px;
+  --fs-micro: 11px;
+  --fw-display: 800;
+  --fw-title: 760;
+  --fw-body-strong: 620;
+  --fw-body: 520;
+  --fw-label: 700;
+  --fw-meta: 500;
+  --lh-tight: 1.1;
+  --lh-snug: 1.28;
+  --lh-body: 1.55;
 }
 
 * {
@@ -48,6 +100,7 @@ body {
   background: var(--bg-root);
   color: var(--text-1);
   letter-spacing: 0.2px;
+  line-height: var(--lh-body);
 }
 
 button,

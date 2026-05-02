@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { initBridge, invokeBridge } from "./bridge";
 import {
   FriendListType,
@@ -17,15 +18,112 @@ import { ShadowRoute } from "./routes/ShadowRoute";
 import { RelationRoute } from "./routes/RelationRoute";
 import { SettingsRoute } from "./routes/SettingsRoute";
 
+const ROUTE_ORDER: RouteKey[] = ["home", "song", "shadow", "chat", "relation", "settings"];
+
+type ShellButterflyRole = "hero" | "support";
+
+const SHELL_BUTTERFLIES: Array<{ role: ShellButterflyRole; src: string; style: CSSProperties }> = [
+  {
+    role: "hero",
+    src: "brand/scene_butterfly_1.png",
+    style: {
+      "--x": "74.2%",
+      "--y": "19.2%",
+      "--size": "144px",
+      "--rotation": "-13deg",
+      "--blur": "0.8px",
+      "--opacity": "0.48",
+      "--brightness": "0.76",
+      "--contrast": "1.05",
+      "--rim-light": "0.28",
+      "--silhouette-strength": "0.26",
+      "--halo-opacity": "0.16",
+      "--lift": "-1px"
+    } as CSSProperties
+  },
+  {
+    role: "support",
+    src: "brand/scene_butterfly_2.png",
+    style: {
+      "--x": "58.8%",
+      "--y": "41.6%",
+      "--size": "130px",
+      "--rotation": "9deg",
+      "--blur": "1.2px",
+      "--opacity": "0.56",
+      "--brightness": "0.79",
+      "--contrast": "1.04",
+      "--rim-light": "0.3",
+      "--silhouette-strength": "0.36",
+      "--halo-opacity": "0.18",
+      "--lift": "1px"
+    } as CSSProperties
+  },
+  {
+    role: "support",
+    src: "brand/scene_butterfly_3.png",
+    style: {
+      "--x": "35.8%",
+      "--y": "69.2%",
+      "--size": "116px",
+      "--rotation": "14deg",
+      "--blur": "1.9px",
+      "--opacity": "0.5",
+      "--brightness": "0.77",
+      "--contrast": "1.03",
+      "--rim-light": "0.24",
+      "--silhouette-strength": "0.42",
+      "--halo-opacity": "0.16",
+      "--lift": "4px"
+    } as CSSProperties
+  }
+];
+
+const routeStageVariants = {
+  initial: (direction: number) => ({
+    opacity: 0,
+    x: direction >= 0 ? 72 : -72,
+    y: 18,
+    scale: 0.965,
+    rotateY: direction >= 0 ? 12 : -12,
+    filter: "blur(10px)"
+  }),
+  animate: {
+    opacity: 1,
+    x: 0,
+    y: 0,
+    scale: 1,
+    rotateY: 0,
+    filter: "blur(0px)",
+    transition: {
+      duration: 0.34,
+      ease: [0.22, 1, 0.36, 1]
+    }
+  },
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: direction >= 0 ? -54 : 54,
+    y: -12,
+    scale: 0.948,
+    rotateY: direction >= 0 ? -8 : 8,
+    filter: "blur(8px)",
+    transition: {
+      duration: 0.24,
+      ease: [0.4, 0, 1, 1]
+    }
+  })
+};
+
 function App() {
   const [bridgeReady, setBridgeReady] = useState(false);
   const [bootError, setBootError] = useState("");
   const [shell, setShell] = useState<any>(null);
   const [route, setRoute] = useState<RouteKey>("home");
+  const [routeDirection, setRouteDirection] = useState(1);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [friendListType, setFriendListType] = useState<FriendListType>("recent");
   const [friendKeyword, setFriendKeyword] = useState("");
-  const [busyLabel, setBusyLabel] = useState("");
+  const [, setBusyLabel] = useState("");
   const [toast, setToast] = useState("");
 
   const [homePayload, setHomePayload] = useState<any>(null);
@@ -105,6 +203,12 @@ function App() {
   const routeMeta = ROUTES.find((item) => item.key === route) || ROUTES[0];
   const relationWindow = relationWindowMode === "year" && relationYear ? `year:${relationYear}` : "all";
   const selectedCandidateIds = new Set<string>(shadowPayload?.selectedCandidateIds || []);
+  const routeRef = useRef<RouteKey>("home");
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+
+  useEffect(() => {
+    routeRef.current = route;
+  }, [route]);
 
   useEffect(() => {
     let active = true;
@@ -158,6 +262,16 @@ function App() {
   }, [bridgeReady, route, shadowTab, shadowGenerateFilters.scope, shadowGenerateFilters.max_pages]);
 
   useEffect(() => {
+    if (!bridgeReady || route !== "shadow" || shadowTab !== "status") {
+      return;
+    }
+    if (shadowPayload?.status) {
+      return;
+    }
+    void handleRefreshShadowStatus();
+  }, [bridgeReady, route, shadowTab, shadowPayload?.status]);
+
+  useEffect(() => {
     if (!bridgeReady || route === "relation") {
       return;
     }
@@ -201,6 +315,16 @@ function App() {
     return () => window.clearInterval(timer);
   }, [qrPolling, route]);
 
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setToast("");
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   async function runBusy<T>(label: string, task: () => Promise<T>): Promise<T | undefined> {
     setBusyLabel(label);
     try {
@@ -225,9 +349,20 @@ function App() {
 
   function applyShellPayload(payload: any) {
     setShell(payload);
-    setRoute((payload?.activeRoute as RouteKey) || "home");
+    updateRoute((payload?.activeRoute as RouteKey) || "home");
     setFriendListType((payload?.friendRail?.activeListType as FriendListType) || "recent");
     setFriendKeyword(String(payload?.friendRail?.searchKeyword || ""));
+  }
+
+  function updateRoute(nextRoute: RouteKey) {
+    const currentRoute = routeRef.current;
+    if (currentRoute !== nextRoute) {
+      const currentIndex = ROUTE_ORDER.indexOf(currentRoute);
+      const nextIndex = ROUTE_ORDER.indexOf(nextRoute);
+      setRouteDirection(nextIndex >= currentIndex ? 1 : -1);
+      routeRef.current = nextRoute;
+    }
+    setRoute(nextRoute);
   }
 
   function applySettingsPayload(payload: any) {
@@ -314,7 +449,7 @@ function App() {
     }
     await runBusy(`切换到${ROUTES.find((item) => item.key === nextRoute)?.label || nextRoute}`, async () => {
       await invokeBridge("navigate", nextRoute);
-      setRoute(nextRoute);
+      updateRoute(nextRoute);
       await ensureRouteData(nextRoute, false);
     });
   }
@@ -582,150 +717,189 @@ function App() {
 
   return (
     <div className="app-shell">
+      <div className="shell-butterfly-layer" aria-hidden="true">
+        {SHELL_BUTTERFLIES.map((butterfly, index) => (
+          <span key={`${butterfly.src}-${index}`} className={`shell-butterfly is-${butterfly.role}`} style={butterfly.style}>
+            <img className="shell-butterfly-shadow" src={butterfly.src} alt="" />
+            <img className="shell-butterfly-rim" src={butterfly.src} alt="" />
+            <img className="shell-butterfly-body" src={butterfly.src} alt="" />
+          </span>
+        ))}
+      </div>
+
       <TopBar route={route} railCollapsed={railCollapsed} onNavigate={(next) => void handleNavigate(next)} onToggleRail={() => setRailCollapsed((value) => !value)} onRefresh={() => void handleRefreshShell()} />
 
       <div className={`shell-body ${railCollapsed ? "is-rail-collapsed" : ""}`}>
-        {!railCollapsed ? (
-          <FriendRail
-            railCollapsed={railCollapsed}
-            currentFriend={currentFriend}
-            friendListType={friendListType}
-            friendKeyword={friendKeyword}
-            friendRail={friendRail}
-            onToggleListType={(listType) => void handleFriendRailUpdate(listType, friendKeyword)}
-            onKeywordChange={(keyword) => void handleFriendRailUpdate(friendListType, keyword)}
-            onClearRecent={() => void invokeBridge("clearRecentFriends").then(applyShellPayload)}
-            onSelectFriend={(uid) => void handleSelectFriend(uid)}
-            onPinFriend={(uid) => void mutateFriend("pinFriend", uid)}
-            onUnpinFriend={(uid) => void mutateFriend("unpinFriend", uid)}
-            onDeleteFriend={(uid) => void mutateFriend("deleteRecentFriend", uid)}
-          />
-        ) : null}
+        <FriendRail
+          railCollapsed={railCollapsed}
+          currentFriend={currentFriend}
+          friendListType={friendListType}
+          friendKeyword={friendKeyword}
+          friendRail={friendRail}
+          onToggleListType={(listType) => void handleFriendRailUpdate(listType, friendKeyword)}
+          onKeywordChange={(keyword) => void handleFriendRailUpdate(friendListType, keyword)}
+          onToggleRail={() => setRailCollapsed(false)}
+          onClearRecent={() => void invokeBridge("clearRecentFriends").then(applyShellPayload)}
+          onSelectFriend={(uid) => void handleSelectFriend(uid)}
+          onPinFriend={(uid) => void mutateFriend("pinFriend", uid)}
+          onUnpinFriend={(uid) => void mutateFriend("unpinFriend", uid)}
+          onDeleteFriend={(uid) => void mutateFriend("deleteRecentFriend", uid)}
+        />
 
-        <main className="main-stage">
-          <div className="stage-header">
-            <div>
-              <h1>{routeMeta.label}</h1>
-            </div>
-            {route === "relation" ? (
-              <div className="stage-header-actions">
-                <button className="secondary-button" onClick={() => void handleRelationRefresh(true)}>
-                  刷新分析
-                </button>
+        <motion.main className="main-stage" layout transition={{ duration: 0.28, ease: "easeOut" }}>
+          <div className="main-stage-slice">
+            <div className="stage-header">
+              <div className="stage-header-copy">
+                <div className="stage-title-row">
+                  <h1>{routeMeta.label}</h1>
+                </div>
               </div>
-            ) : null}
-          </div>
+              {route === "relation" ? (
+                <div className="stage-header-actions">
+                  <button className="secondary-button" onClick={() => void handleRelationRefresh(true)}>
+                    刷新分析
+                  </button>
+                </div>
+              ) : null}
+            </div>
 
-          <div className="route-viewport">
-            <AnimatePresence mode="wait">
-              <motion.section key={route} className="page-section" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: "easeOut" }}>
-                {route === "home" ? <HomeRoute shell={shell} currentFriend={currentFriend} homeCards={homeCards} /> : null}
-                {route === "song" ? (
-                  <SongRoute
-                    songFilters={songFilters}
-                    setSongFilters={setSongFilters}
-                    songResult={songResult}
-                    songActiveDates={songActiveDates}
-                    hasQueried={songResult !== null}
-                    onQuery={() => void handleSongQuery()}
-                    onReset={() => {
-                      setSongFilters({ scope: "recent", pages: 3, sender_scope: "all", query_mode: "all", target_date: "", start_date: "", end_date: "", keyword: "" });
-                      setSongResult(null);
-                    }}
-                  />
-                ) : null}
-                {route === "chat" ? (
-                  <ChatRoute
-                    chatFilters={chatFilters}
-                    setChatFilters={setChatFilters}
-                    chatResult={chatResult}
-                    chatActiveDates={chatActiveDates}
-                    hasQueried={chatResult !== null}
-                    onQuery={() => void handleChatQuery()}
-                    onReset={() => {
-                      setChatFilters({ scope: "recent", pages: 3, sender_scope: "all", message_type: "all", query_mode: "all", target_date: "", start_datetime: "", end_datetime: "", keyword: "" });
-                      setChatResult(null);
-                    }}
-                  />
-                ) : null}
-                {route === "shadow" ? (
-                  <ShadowRoute
-                    shell={shell}
-                    shadowPayload={shadowPayload}
-                    shadowOwnedPlaylists={shadowOwnedPlaylists}
-                    songActiveDates={songActiveDates}
-                    shadowTab={shadowTab}
-                    setShadowTab={setShadowTab}
+            <div className="route-viewport">
+              <AnimatePresence mode="wait" initial={false} custom={routeDirection}>
+                <motion.section
+                  key={route}
+                  className="page-section route-stage"
+                  custom={routeDirection}
+                  variants={routeStageVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                >
+                  {route === "home" ? <HomeRoute shell={shell} currentFriend={currentFriend} homeCards={homeCards} /> : null}
+                  {route === "song" ? (
+                    <SongRoute
+                      songFilters={songFilters}
+                      setSongFilters={setSongFilters}
+                      songResult={songResult}
+                      songActiveDates={songActiveDates}
+                      hasQueried={songResult !== null}
+                      onQuery={() => void handleSongQuery()}
+                      onReset={() => {
+                        setSongFilters({ scope: "recent", pages: 3, sender_scope: "all", query_mode: "all", target_date: "", start_date: "", end_date: "", keyword: "" });
+                        setSongResult(null);
+                      }}
+                    />
+                  ) : null}
+                  {route === "chat" ? (
+                    <ChatRoute
+                      chatFilters={chatFilters}
+                      setChatFilters={setChatFilters}
+                      chatResult={chatResult}
+                      chatActiveDates={chatActiveDates}
+                      hasQueried={chatResult !== null}
+                      onQuery={() => void handleChatQuery()}
+                      onReset={() => {
+                        setChatFilters({ scope: "recent", pages: 3, sender_scope: "all", message_type: "all", query_mode: "all", target_date: "", start_datetime: "", end_datetime: "", keyword: "" });
+                        setChatResult(null);
+                      }}
+                    />
+                  ) : null}
+                  {route === "shadow" ? (
+                    <ShadowRoute
+                      shell={shell}
+                      shadowPayload={shadowPayload}
+                      shadowOwnedPlaylists={shadowOwnedPlaylists}
+                      songActiveDates={songActiveDates}
+                      shadowTab={shadowTab}
+                      setShadowTab={setShadowTab}
                     shadowSelectorForm={shadowSelectorForm}
                     setShadowSelectorForm={setShadowSelectorForm}
                     shadowGenerateFilters={shadowGenerateFilters}
                     setShadowGenerateFilters={setShadowGenerateFilters}
                     selectedCandidateIds={selectedCandidateIds}
-                    onRefreshPayload={() => void loadShadowPayload(true)}
                     onLoadOwnedPlaylists={() => void handleLoadOwnedPlaylists()}
                     onSaveTarget={() => void handleSaveShadowTarget()}
                     onLoadCandidates={() => void handleLoadShadowCandidates()}
                     onToggleCandidate={(msgId, checked) => void handleToggleCandidate(msgId, checked)}
-                    onBulkCandidate={(mode) => void handleBulkCandidate(mode)}
-                    onGenerate={() => void handleGenerateShadowPlaylist()}
-                    onRefreshStatus={() => void handleRefreshShadowStatus()}
-                  />
-                ) : null}
-                {route === "relation" ? (
-                  <RelationRoute
-                    relationPayload={relationPayload}
-                    relationTab={relationTab}
-                    setRelationTab={setRelationTab}
-                    relationWindowMode={relationWindowMode}
-                    setRelationWindowMode={setRelationWindowMode}
-                    relationYear={relationYear}
-                    setRelationYear={setRelationYear}
-                    friendAiMode={friendAiMode}
-                    setFriendAiMode={setFriendAiMode}
-                    selfAiMode={selfAiMode}
-                    setSelfAiMode={setSelfAiMode}
-                    friendInsight={friendInsight}
-                    selfInsight={selfInsight}
-                    reports={reports}
-                    reportType={reportType}
-                    setReportType={setReportType}
-                    reportKeyword={reportKeyword}
-                    setReportKeyword={setReportKeyword}
-                    currentFriend={currentFriend}
-                    onRefresh={() => void handleRelationRefresh(true)}
-                    onGenerateFriendAi={() => void handleGenerateFriendAi()}
-                    onGenerateSelfAi={() => void handleGenerateSelfAi()}
-                    onExportFriendReport={() => void handleExportFriendReport()}
-                    onExportSelfReport={() => void handleExportSelfReport()}
-                    onExportAnnualReport={() => void handleExportAnnualReport()}
-                    onLoadReports={() => void loadReports()}
-                    onCleanupReports={() => void invokeBridge<any>("cleanupRelationReports").then(() => { setToast("已清理失效报告。"); void loadReports(); })}
-                    onOpenReport={(path) => void invokeBridge("openReport", path)}
-                    onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
-                  />
-                ) : null}
-                {route === "settings" ? (
-                  <SettingsRoute
-                    settingsPayload={settingsPayload}
-                    settingsForm={settingsForm}
-                    setSettingsForm={setSettingsForm}
-                    onAction={(method, successText) => void handleSettingsAction(method, successText)}
-                    onSave={() => void handleSaveSettings()}
-                    onRefresh={() => void loadSettings(true)}
-                    onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
-                  />
-                ) : null}
-                {!["home", "song", "chat", "shadow", "relation", "settings"].includes(route) ? (
-                  <EmptyState title="当前路由未就绪" detail="这个页面还没有被绑定到 Web Shell。继续推进时我会把它接进统一壳层。" />
-                ) : null}
-              </motion.section>
-            </AnimatePresence>
+                      onBulkCandidate={(mode) => void handleBulkCandidate(mode)}
+                      onGenerate={() => void handleGenerateShadowPlaylist()}
+                      onRefreshStatus={() => void handleRefreshShadowStatus()}
+                    />
+                  ) : null}
+                  {route === "relation" ? (
+                    <RelationRoute
+                      relationPayload={relationPayload}
+                      relationTab={relationTab}
+                      setRelationTab={setRelationTab}
+                      relationWindowMode={relationWindowMode}
+                      setRelationWindowMode={setRelationWindowMode}
+                      relationYear={relationYear}
+                      setRelationYear={setRelationYear}
+                      friendAiMode={friendAiMode}
+                      setFriendAiMode={setFriendAiMode}
+                      selfAiMode={selfAiMode}
+                      setSelfAiMode={setSelfAiMode}
+                      friendInsight={friendInsight}
+                      selfInsight={selfInsight}
+                      reports={reports}
+                      reportType={reportType}
+                      setReportType={setReportType}
+                      reportKeyword={reportKeyword}
+                      setReportKeyword={setReportKeyword}
+                      currentFriend={currentFriend}
+                      onRefresh={() => void handleRelationRefresh(true)}
+                      onGenerateFriendAi={() => void handleGenerateFriendAi()}
+                      onGenerateSelfAi={() => void handleGenerateSelfAi()}
+                      onExportFriendReport={() => void handleExportFriendReport()}
+                      onExportSelfReport={() => void handleExportSelfReport()}
+                      onExportAnnualReport={() => void handleExportAnnualReport()}
+                      onLoadReports={() => void loadReports()}
+                      onCleanupReports={() => void invokeBridge<any>("cleanupRelationReports").then(() => { setToast("已清理失效报告。"); void loadReports(); })}
+                      onOpenReport={(path) => void invokeBridge("openReport", path)}
+                      onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
+                    />
+                  ) : null}
+                  {route === "settings" ? (
+                    <SettingsRoute
+                      settingsPayload={settingsPayload}
+                      settingsForm={settingsForm}
+                      setSettingsForm={setSettingsForm}
+                      onAction={(method, successText) => void handleSettingsAction(method, successText)}
+                      onSave={() => void handleSaveSettings()}
+                      onRefresh={() => void loadSettings(true)}
+                      onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
+                    />
+                  ) : null}
+                  {!["home", "song", "chat", "shadow", "relation", "settings"].includes(route) ? (
+                    <EmptyState title="当前路由未就绪" detail="这个页面还没有被绑定到 Web Shell。继续推进时我会把它接进统一壳层。" />
+                  ) : null}
+                </motion.section>
+              </AnimatePresence>
+            </div>
           </div>
-        </main>
+        </motion.main>
       </div>
 
-      {busyLabel ? <div className="busy-indicator">{busyLabel}</div> : null}
-      {toast ? <button className="toast" onClick={() => setToast("")}>{toast}</button> : null}
+      {portalTarget
+        ? createPortal(
+            <>
+              <AnimatePresence>
+                {toast ? (
+                  <motion.button
+                    className="toast"
+                    onClick={() => setToast("")}
+                    initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                    transition={{ duration: 0.28, ease: "easeOut" }}
+                  >
+                    {toast}
+                  </motion.button>
+                ) : null}
+              </AnimatePresence>
+            </>,
+            portalTarget
+          )
+        : null}
     </div>
   );
 }

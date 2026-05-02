@@ -46,7 +46,7 @@ export function SongRoute({
         <div className="toolbar">
           <button className="primary-button" onClick={onQuery}>查询歌曲分享</button>
           <button className="secondary-button" onClick={onReset}>清空条件</button>
-          <span className="toolbar-meta">{songResult?.summary?.count ? `${songResult.summary.count} 条结果` : "等待查询"}</span>
+          <span className={`toolbar-meta ${songResult?.summary?.count ? "is-active" : "is-idle"}`}>{songResult?.summary?.count ? `${songResult.summary.count} 条结果` : "等待查询"}</span>
         </div>
       </div>
 

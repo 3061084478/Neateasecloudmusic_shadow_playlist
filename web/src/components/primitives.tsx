@@ -1,4 +1,6 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function ToolRoute({
   title,
@@ -12,34 +14,6 @@ export function ToolRoute({
       {children}
     </div>
   );
-}
-
-function useOutsideDismiss<T extends HTMLElement>(open: boolean, onClose: () => void) {
-  const ref = useRef<T | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const handlePointerDown = (event: MouseEvent) => {
-      if (ref.current && event.target instanceof Node && !ref.current.contains(event.target)) {
-        onClose();
-      }
-    };
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [open, onClose]);
-
-  return ref;
 }
 
 function formatCalendarMonth(value: string) {
@@ -197,30 +171,102 @@ export function DateMatrixField({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const wrapperRef = useOutsideDismiss<HTMLDivElement>(open, () => setOpen(false));
+  const triggerRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelRect, setPanelRect] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const updatePanelRect = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) {
+        return;
+      }
+      const rect = trigger.getBoundingClientRect();
+      const width = 320;
+      const maxLeft = Math.max(12, window.innerWidth - width - 12);
+      setPanelRect({
+        top: rect.bottom + 8,
+        left: Math.min(Math.max(12, rect.left), maxLeft),
+        width,
+      });
+    };
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    updatePanelRect();
+    window.addEventListener("resize", updatePanelRect);
+    window.addEventListener("scroll", updatePanelRect, true);
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("resize", updatePanelRect);
+      window.removeEventListener("scroll", updatePanelRect, true);
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
 
   return (
-    <div className={`field calendar-field ${className}`.trim()} ref={wrapperRef}>
+    <div className={`field calendar-field ${className}`.trim()}>
       <span>{label}</span>
-      <div className={`picker-input ${open ? "is-open" : ""}`}>
+      <div ref={triggerRef} className={`picker-input ${open ? "is-open" : ""}`}>
         <input value={value} readOnly placeholder="选择日期" onClick={() => setOpen((prev) => !prev)} />
         <button type="button" className="picker-trigger" onClick={() => setOpen((prev) => !prev)}>
           ▦
         </button>
       </div>
-      {open ? (
-        <div className="floating-panel calendar-panel">
-          <CalendarPanel
-            value={value}
-            activeDates={activeDates}
-            minDate={minDate}
-            onPick={(nextValue) => {
-              onChange(nextValue);
-              setOpen(false);
-            }}
-          />
-        </div>
-      ) : null}
+      {typeof document !== "undefined" && panelRect
+        ? createPortal(
+            <AnimatePresence>
+              {open ? (
+                <motion.div
+                  ref={panelRef}
+                  className="floating-panel calendar-panel calendar-panel-portal"
+                  style={{
+                    position: "fixed",
+                    top: panelRect.top,
+                    left: panelRect.left,
+                    width: panelRect.width,
+                  }}
+                  initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.985 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                >
+                  <CalendarPanel
+                    value={value}
+                    activeDates={activeDates}
+                    minDate={minDate}
+                    onPick={(nextValue) => {
+                      onChange(nextValue);
+                      setOpen(false);
+                    }}
+                  />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -239,33 +285,115 @@ export function SelectField({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const wrapperRef = useOutsideDismiss<HTMLDivElement>(open, () => setOpen(false));
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelRect, setPanelRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const activeOption = options.find((item) => item.value === value) || options[0];
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const updatePanelRect = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) {
+        return;
+      }
+      const rect = trigger.getBoundingClientRect();
+      const width = Math.max(rect.width, 168);
+      const maxLeft = Math.max(12, window.innerWidth - width - 12);
+      setPanelRect({
+        top: rect.bottom + 8,
+        left: Math.min(Math.max(12, rect.left), maxLeft),
+        width,
+      });
+    };
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    updatePanelRect();
+    window.addEventListener("resize", updatePanelRect);
+    window.addEventListener("scroll", updatePanelRect, true);
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("resize", updatePanelRect);
+      window.removeEventListener("scroll", updatePanelRect, true);
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
   return (
-    <div className={`field select-field ${className}`.trim()} ref={wrapperRef}>
+    <div className={`field select-field ${className}`.trim()}>
       <span>{label}</span>
-      <button type="button" className={`picker-input select-trigger ${open ? "is-open" : ""}`} onClick={() => setOpen((prev) => !prev)}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`picker-input select-trigger ${open ? "is-open" : ""}`}
+        onClick={() => setOpen((prev) => !prev)}
+      >
         <strong>{activeOption?.label || "-"}</strong>
         <span className="select-chevron">▾</span>
       </button>
-      {open ? (
-        <div className="floating-panel select-panel">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`select-option ${option.value === value ? "is-active" : ""}`}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {typeof document !== "undefined" && panelRect
+        ? createPortal(
+            <AnimatePresence>
+              {open ? (
+                <motion.div
+                  ref={panelRef}
+                  className="floating-panel select-panel select-panel-portal"
+                  style={{
+                    position: "fixed",
+                    top: panelRect.top,
+                    left: panelRect.left,
+                    width: panelRect.width,
+                  }}
+                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.985 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                >
+                  {options.map((option, index) => (
+                    <motion.button
+                      key={option.value}
+                      type="button"
+                      className={`select-option ${option.value === value ? "is-active" : ""}`}
+                      onClick={() => {
+                        onChange(option.value);
+                        setOpen(false);
+                      }}
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.14, delay: index * 0.015, ease: "easeOut" }}
+                      whileHover={{ x: 2 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      {option.label}
+                    </motion.button>
+                  ))}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -333,10 +461,16 @@ export function NumberField({
 
 export function MetricCard({ title, value }: { title: string; value: string | number }) {
   return (
-    <div className="metric-card">
+    <motion.div
+      className="metric-card"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      whileHover={{ y: -3, scale: 1.01 }}
+    >
       <span>{title}</span>
       <strong>{value}</strong>
-    </div>
+    </motion.div>
   );
 }
 
@@ -362,23 +496,46 @@ export function ResultStream({
     return <EmptyState title={emptyTitle} detail="当前没有可展示内容。" />;
   }
   return (
-    <div className="result-stream">
+    <motion.div
+      className="result-stream"
+      initial="hidden"
+      animate="show"
+      variants={{
+        hidden: {},
+        show: {
+          transition: {
+            staggerChildren: 0.04
+          }
+        }
+      }}
+    >
       {items.map((item, index) => (
-        <Fragment key={item?.msg_id || item?.path || item?.uid || `${index}`}>
+        <motion.div
+          key={item?.msg_id || item?.path || item?.uid || `${index}`}
+          variants={{
+            hidden: { opacity: 0, y: 12 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: "easeOut" } }
+          }}
+          layout
+        >
           {children(item)}
-        </Fragment>
+        </motion.div>
       ))}
-    </div>
+    </motion.div>
   );
 }
 
 export function EmptyState({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="empty-state">
-      <div className="empty-icon">·</div>
+    <motion.div
+      className="empty-state"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+    >
       <h3>{title}</h3>
       <p>{detail}</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -682,6 +839,7 @@ export function CommonWorldPanel({ data }: { data: any }) {
 
 export function GenreDonutChart({ items }: { items: any[] }) {
   const chartItems = (items || []).slice(0, 4);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (!chartItems.length) {
     return <InlineEmpty text="当前没有风格数据" />;
   }
@@ -692,7 +850,7 @@ export function GenreDonutChart({ items }: { items: any[] }) {
   let progress = 0;
 
   return (
-    <div className="donut-chart">
+    <div className={`donut-chart ${hoveredIndex !== null ? "has-active-item" : ""}`}>
       <svg viewBox="0 0 180 180" className="donut-svg">
         <circle cx="90" cy="90" r={radius} className="donut-track" />
         {chartItems.map((item, index) => {
@@ -709,8 +867,10 @@ export function GenreDonutChart({ items }: { items: any[] }) {
               cx="90"
               cy="90"
               r={radius}
-              className="donut-segment"
+              className={`donut-segment donut-segment-${index} ${hoveredIndex === index ? "is-hovered" : ""}`}
               style={{ stroke: colors[index % colors.length], strokeDasharray, strokeDashoffset }}
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseLeave={() => setHoveredIndex(null)}
             />
           );
         })}
@@ -723,7 +883,12 @@ export function GenreDonutChart({ items }: { items: any[] }) {
       </svg>
       <div className="chart-legend">
         {chartItems.map((item, index) => (
-          <div key={`${item.name || index}-${index}`} className="chart-legend-row">
+          <div
+            key={`${item.name || index}-${index}`}
+            className={`chart-legend-row ${hoveredIndex === index ? "is-hovered" : ""}`}
+            onMouseEnter={() => setHoveredIndex(index)}
+            onMouseLeave={() => setHoveredIndex(null)}
+          >
             <span className="legend-dot" style={{ background: colors[index % colors.length] }} />
             <span>{item.name || "未知"}</span>
             <strong>{item.count || 0}</strong>
@@ -736,6 +901,7 @@ export function GenreDonutChart({ items }: { items: any[] }) {
 
 export function ArtistPodiumChart({ items }: { items: any[] }) {
   const chartItems = (items || []).slice(0, 3);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (!chartItems.length) {
     return <InlineEmpty text="当前没有歌手数据" />;
   }
@@ -747,7 +913,12 @@ export function ArtistPodiumChart({ items }: { items: any[] }) {
         {ordered.map((item, index) => {
           const height = 78 + (Number(item?.count || 0) / maxValue) * 84;
           return (
-            <div key={`${item?.name || index}-${index}`} className={`podium-slot rank-${index + 1}`}>
+            <div
+              key={`${item?.name || index}-${index}`}
+              className={`podium-slot rank-${index + 1} ${hoveredIndex === index ? "is-hovered" : ""}`}
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            >
               <div className="podium-name">{item?.name || "暂无"}</div>
               <div className="podium-bar" style={{ height }}>
                 <span>{item?.count || 0}</span>
@@ -775,6 +946,7 @@ export function NetworkOrbitCard({
   centerAvatarUrl?: string;
   centerName?: string;
 }) {
+  const [centerHovered, setCenterHovered] = useState(false);
   const nodes = (items || []).slice(0, 5);
   if (!nodes.length) {
     return (
@@ -796,7 +968,7 @@ export function NetworkOrbitCard({
     layoutSeed
   );
   return (
-    <div className="network-orbit-card">
+    <div className={`network-orbit-card ${centerHovered ? "is-center-active" : ""}`}>
       <div className="network-orbit-head">
         <h4>{title}</h4>
       </div>
@@ -825,21 +997,37 @@ export function NetworkOrbitCard({
             const labelX = labelCenterX - badgeWidth / 2;
             const labelY = labelCenterY - badgeHeight / 2;
             return (
-              <g key={`${item?.uid || item?.name || index}-${index}`}>
+              <g key={`${item?.uid || item?.name || index}-${index}`} className="network-node-group">
                 <line x1="160" y1="120" x2={x} y2={y} className="network-link" />
-                <foreignObject x={x - avatarSize / 2} y={y - avatarSize / 2} width={avatarSize} height={avatarSize}>
-                  <div className="network-node-wrap">
+                <foreignObject
+                  x={x - avatarSize / 2 - 16}
+                  y={y - avatarSize / 2 - 16}
+                  width={avatarSize + 32}
+                  height={avatarSize + 32}
+                >
+                  <div className="network-node-wrap network-node-shell">
                     <Avatar avatarUrl={item?.avatar_url} name={item?.name} size={avatarSize} />
                   </div>
                 </foreignObject>
-                <foreignObject x={labelX} y={labelY} width={badgeWidth} height={badgeHeight}>
-                  <div className="network-link-badge">{badgeValue}</div>
+                <foreignObject
+                  x={labelX - 10}
+                  y={labelY - 10}
+                  width={badgeWidth + 20}
+                  height={badgeHeight + 20}
+                >
+                  <div className="network-link-badge-shell">
+                    <div className="network-link-badge">{badgeValue}</div>
+                  </div>
                 </foreignObject>
               </g>
             );
           })}
-          <foreignObject x="141" y="101" width="38" height="38">
-            <div className="network-core-wrap">
+          <foreignObject x="125" y="85" width="70" height="70">
+            <div
+              className="network-core-wrap network-core-shell"
+              onMouseEnter={() => setCenterHovered(true)}
+              onMouseLeave={() => setCenterHovered(false)}
+            >
               <Avatar avatarUrl={centerAvatarUrl} name={centerName || "我"} size={38} />
             </div>
           </foreignObject>
@@ -937,7 +1125,7 @@ export function DualRankPanel({
 
   return (
     <div className="dual-rank-panel">
-      <div className="rank-column">
+      <div className="rank-card rank-card-genre">
         <h4>风格</h4>
         {left.map((item, index) => (
           <div key={`${item.name || index}-${index}`} className="rank-row">
@@ -949,7 +1137,7 @@ export function DualRankPanel({
           </div>
         ))}
       </div>
-      <div className="rank-column">
+      <div className="rank-card rank-card-artist">
         <h4>歌手</h4>
         {right.map((item, index) => (
           <div key={`${item.name || index}-${index}`} className="rank-row">

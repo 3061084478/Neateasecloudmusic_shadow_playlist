@@ -54,7 +54,6 @@ export function SettingsRoute({
             <img className="qr-image" src={settingsPayload.qr.imageDataUrl} alt="二维码登录" />
           ) : (
             <div className="empty-state">
-              <div className="empty-icon">·</div>
               <h3>当前还没有二维码</h3>
               <p>点击右上按钮生成新的登录二维码。</p>
             </div>

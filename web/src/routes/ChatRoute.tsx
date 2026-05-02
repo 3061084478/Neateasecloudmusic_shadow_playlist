@@ -47,7 +47,7 @@ export function ChatRoute({
         <div className="toolbar">
           <button className="primary-button" onClick={onQuery}>查询聊天内容</button>
           <button className="secondary-button" onClick={onReset}>清空条件</button>
-          <span className="toolbar-meta">{chatResult?.summary?.count ? `${chatResult.summary.count} 条结果` : "等待查询"}</span>
+          <span className={`toolbar-meta ${chatResult?.summary?.count ? "is-active" : "is-idle"}`}>{chatResult?.summary?.count ? `${chatResult.summary.count} 条结果` : "等待查询"}</span>
         </div>
       </div>
 
