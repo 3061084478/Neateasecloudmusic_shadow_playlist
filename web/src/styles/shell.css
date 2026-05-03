@@ -2075,6 +2075,7 @@
   line-height: var(--lh-body);
   margin: 0;
   font-size: var(--fs-body);
+  white-space: pre-line;
 }
 
 .hero-pills {

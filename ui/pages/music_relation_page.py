@@ -421,7 +421,7 @@ class MusicRelationPage(QtWidgets.QWidget):
         ai_controls.setSpacing(10)
         ai_controls.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         self.friend_mode_combo = QtWidgets.QComboBox()
-        self.friend_mode_combo.addItems(["理性版", "风格版", "评论版", "年度报告版"])
+        self.friend_mode_combo.addItems(["理性分析版", "总结版", "评论版", "年度报告版"])
         self.friend_ai_button = make_button("生成 AI 文段", "primaryButton")
         self.friend_export_button = make_button("导出好友报告 PNG", "secondaryButton")
         self.friend_ai_source = make_label("待生成", "statusBadge", False)
@@ -567,7 +567,7 @@ class MusicRelationPage(QtWidgets.QWidget):
 
         ai_controls = QtWidgets.QHBoxLayout()
         self.self_mode_combo = QtWidgets.QComboBox()
-        self.self_mode_combo.addItems(["理性版", "风格版", "评论版"])
+        self.self_mode_combo.addItems(["理性分析版", "总结版", "评论版"])
         self.self_ai_button = make_button("生成个人 AI 文段", "primaryButton")
         self.self_export_button = make_button("导出个人报告 PNG", "secondaryButton")
         self.self_ai_source = make_label("待生成", "statusBadge", False)
@@ -1259,7 +1259,7 @@ class MusicRelationPage(QtWidgets.QWidget):
             return "commentary"
         if text == "年度报告版":
             return "annual"
-        return "style" if text == "风格版" else "rational"
+        return "style" if text in {"风格版", "总结版"} else "rational"
 
     @staticmethod
     def _report_type_key(text: str) -> str:

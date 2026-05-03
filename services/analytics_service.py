@@ -1461,4 +1461,11 @@ class AnalyticsService:
             "first_introduced_artist": snapshot.get("first_introduced_artist", ""),
             "silence_and_burst": snapshot.get("silence_and_burst", {}),
             "relation_theme_color": snapshot.get("relation_theme_color", "#7fd3ff"),
+            "social_tag": snapshot.get("social_tag", ""),
+            "core_friend_name": snapshot.get("core_friend_name", ""),
+            "top_chat_friends": snapshot.get("top_chat_friends", [])[:3],
+            "top_song_friends": snapshot.get("top_song_friends", [])[:3],
+            "top_temperature_friends": snapshot.get("top_temperature_friends", [])[:3],
+            "artist_overview": snapshot.get("artist_overview", {}),
+            "network_block": snapshot.get("network_block", {}),
         }

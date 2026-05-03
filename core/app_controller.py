@@ -566,6 +566,8 @@ class AppController(QtCore.QObject):
     @staticmethod
     def _normalize_insight_mode(mode: str) -> str:
         normalized = (mode or "").strip().lower()
+        if normalized in {"style", "summary", "风格", "风格版", "总结", "总结版"}:
+            return "style"
         if normalized in {"commentary", "comment", "评论", "评论版"}:
             return "commentary"
         if normalized in {"annual", "year", "年度", "年度报告", "年度报告版"}:
