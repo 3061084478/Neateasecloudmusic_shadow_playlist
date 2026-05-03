@@ -14,6 +14,26 @@ Shadow V5 主要处理四类内容：
 
 整个界面以黑色背景、斜向光束和蝴蝶元素构成统一视觉，登录页和主页属于同一个场景体系。
 
+## 界面预览
+
+### 登录页
+![登录页](docs/screenshots/startup-login.png)
+
+### 首页
+![首页](docs/screenshots/home-overview.png)
+
+### 歌曲分享
+![歌曲分享](docs/screenshots/song-share.png)
+
+### 影子歌单
+![影子歌单](docs/screenshots/shadow-playlist.png)
+
+### 聊天记录
+![聊天记录](docs/screenshots/chat-record.png)
+
+### 音乐关系
+![音乐关系](docs/screenshots/music-relation.png)
+
 ## 启动方式
 
 ### 便携版
