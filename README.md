@@ -14,26 +14,6 @@ Shadow V5 主要处理四类内容：
 
 整个界面以黑色背景、斜向光束和蝴蝶元素构成统一视觉，登录页和主页属于同一个场景体系。
 
-## 界面预览
-
-### 登录页
-![登录页](docs/screenshots/startup-login.png)
-
-### 首页
-![首页](docs/screenshots/home-overview.png)
-
-### 歌曲分享
-![歌曲分享](docs/screenshots/song-share.png)
-
-### 影子歌单
-![影子歌单](docs/screenshots/shadow-playlist.png)
-
-### 聊天记录
-![聊天记录](docs/screenshots/chat-record.png)
-
-### 音乐关系
-![音乐关系](docs/screenshots/music-relation.png)
-
 ## 启动方式
 
 ### 便携版
@@ -61,7 +41,7 @@ python .\main.py
 ```
 
 ## 登录与进入
-
+![登录页](docs/screenshots/startup-login.png)
 程序启动后会先进入登录页。
 
 - 点击 `启动 API` 后，程序会拉起本地 API 并检测当前 Cookie 状态。
@@ -72,7 +52,7 @@ python .\main.py
 ## 功能说明
 
 ### 首页
-
+![首页](docs/screenshots/home-overview.png)
 首页用于展示当前账号、当前选中好友以及四个主功能入口：
 
 - 歌曲分享
@@ -83,7 +63,7 @@ python .\main.py
 这是主流程的总览页，用来快速进入具体功能区。
 
 ### 歌曲分享
-
+![歌曲分享](docs/screenshots/song-share.png)
 歌曲分享页用于读取你和当前好友私信里的歌曲记录，并支持按条件筛选：
 
 - 范围
@@ -94,7 +74,7 @@ python .\main.py
 结果区会按消息时间返回歌曲名称、歌手和消息信息。
 
 ### 影子歌单
-
+![影子歌单](docs/screenshots/shadow-playlist.png)
 影子歌单页分为三个工作区：
 
 - `目标歌单`
@@ -107,12 +87,12 @@ python .\main.py
 该功能会围绕你设置的目标歌单工作，因此更适合用来沉淀聊天里的共享音乐痕迹。
 
 ### 聊天记录
-
+![聊天记录](docs/screenshots/chat-record.png)
 聊天记录页用于按范围查看与当前好友的聊天归档内容。  
 除了普通文本，也会保留歌曲消息等结构化记录，方便后续继续分析和筛选。
 
 ### 音乐关系
-
+![音乐关系](docs/screenshots/music-relation.png)
 音乐关系页用于查看更偏分析向的结果，主要包括：
 
 - 单好友画像
