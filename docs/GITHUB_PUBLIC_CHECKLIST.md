@@ -11,6 +11,7 @@
 - `release/`
 - `runtime/`
 - `web/node_modules/`
+- `tmp/`
 - 任何 Cookie、AI Key、聊天数据库、缓存、报告、日志、二维码图片
 - 任何带本机绝对路径、内部交接内容或私人测试流程的脚本/文档
 
@@ -18,6 +19,7 @@
 
 这些文件即使写进 `.gitignore`，如果已经被 Git 跟踪，仍需要手动从索引移除：
 
+- `tmp/` 下的预览图与中间产物
 - `docs/shadow_v5_topic_handoff_2026-05-03.md`
 - `tools/render_brand_draft.py`
 - `tools/vacuum_qr_manual_test.ps1`
@@ -26,11 +28,20 @@
 执行下面的命令只会停止跟踪，不会删除你本地文件：
 
 ```powershell
+git rm --cached tmp/*
 git rm --cached docs/shadow_v5_topic_handoff_2026-05-03.md
 git rm --cached tools/render_brand_draft.py
 git rm --cached tools/vacuum_qr_manual_test.ps1
 git rm --cached tools/vacuum_smoke_test.ps1
 ```
+
+本轮深扫明确发现的风险点：
+
+- `tools/render_brand_draft.py`：含 `C:\Users\ASUS\...`、`xwechat_files`、`RWTemp` 等本机路径
+- `tools/vacuum_qr_manual_test.ps1`：含本机压缩包路径与本地测试工作目录
+- `tools/vacuum_smoke_test.ps1`：含本机压缩包路径与本地测试工作目录
+- `docs/shadow_v5_topic_handoff_2026-05-03.md`：内部交接文档，不建议公开
+- `tmp/`：当前已有多张过程预览图被 Git 跟踪，建议全部移出公开仓库范围
 
 ## 3. 首次公开前建议检查
 
@@ -83,6 +94,7 @@ git push -u origin main
 
 ```powershell
 git rm --cached docs/shadow_v5_topic_handoff_2026-05-03.md
+git rm --cached tmp/*
 git rm --cached tools/render_brand_draft.py
 git rm --cached tools/vacuum_qr_manual_test.ps1
 git rm --cached tools/vacuum_smoke_test.ps1
