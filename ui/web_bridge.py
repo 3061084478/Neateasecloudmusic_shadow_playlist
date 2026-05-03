@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List
@@ -123,6 +124,17 @@ class WebBridge(QtCore.QObject):
         self.qr_url = ""
         self.qr_status = status
         self.qr_image_data_url = ""
+
+    @staticmethod
+    def _build_restart_command() -> tuple[str, List[str], str]:
+        working_directory = str(Path.cwd())
+        if getattr(sys, "frozen", False):
+            return sys.executable, list(sys.argv[1:]), working_directory
+
+        script_path = Path(sys.argv[0] or "")
+        if not script_path.is_absolute():
+            script_path = (Path.cwd() / script_path).resolve()
+        return sys.executable, [str(script_path), *sys.argv[1:]], working_directory
 
     def _ensure_qr_session(self) -> None:
         if self.qr_key and self.qr_status in {"ready", "waiting-scan", "waiting-confirm"} and self.qr_image_data_url:
@@ -689,11 +701,27 @@ class WebBridge(QtCore.QObject):
                 self.qr_status = "waiting-confirm"
             elif code == 803:
                 self.qr_status = "success"
-                self._refresh_runtime_state(fetch_account_profile=True, fetch_shadow_playlist=False, load_friends=True)
+                self._refresh_runtime_state(fetch_account_profile=True, fetch_shadow_playlist=False, load_friends=False)
             elif code == 800:
                 self.qr_status = "expired"
             self._append_log(f"二维码状态：{code}")
             return _json_ok({"code": code, "startup": self._startup_payload(), "settings": self._settings_payload(), "shell": self._shell_payload()})
+        except Exception as exc:
+            self._set_error(str(exc))
+            return _json_error(str(exc))
+
+    @QtCore.Slot(result=str)
+    def restartApplication(self) -> str:
+        try:
+            program, arguments, working_directory = self._build_restart_command()
+            started = QtCore.QProcess.startDetached(program, arguments, working_directory)
+            if not started:
+                raise RuntimeError("未能拉起新的应用进程。")
+            self._append_log("已拉起新进程，当前应用即将退出。")
+            app = QtCore.QCoreApplication.instance()
+            if app is not None:
+                QtCore.QTimer.singleShot(120, app.quit)
+            return _json_ok({"restarting": True})
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))

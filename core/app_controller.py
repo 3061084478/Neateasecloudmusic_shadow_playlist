@@ -151,6 +151,7 @@ class AppController(QtCore.QObject):
             if default_friend:
                 self.session_state.current_friend = default_friend
                 self.friend_sidebar_state.selected_friend_uid = default_friend.uid
+        self._sync_current_friend_pinned_state()
         self.friend_lists_changed.emit()
         self._invalidate_relation_cache()
         self.state_changed.emit()
@@ -192,6 +193,12 @@ class AppController(QtCore.QObject):
         decorated.sort(key=lambda item: (0 if item.is_pinned else 1, item.nickname.lower(), item.uid))
         return decorated
 
+    def _sync_current_friend_pinned_state(self) -> None:
+        current = self.session_state.current_friend
+        if not current:
+            return
+        current.is_pinned = any(item.uid == current.uid and item.is_pinned for item in self.recent_friends)
+
     def set_friend_list_type(self, list_type: str) -> None:
         self.friend_sidebar_state.active_list_type = list_type
         self.friend_lists_changed.emit()
@@ -205,6 +212,7 @@ class AppController(QtCore.QObject):
         self.friend_sidebar_state.selected_friend_uid = friend.uid
         self.recent_friends = self.friend_service.remember_friend(friend.uid, friend.nickname, friend.avatar_url)
         self.friend_sidebar_state.pinned_friend_uids = [item.uid for item in self.recent_friends if item.is_pinned]
+        self._sync_current_friend_pinned_state()
         self.friend_lists_changed.emit()
         self._invalidate_relation_cache()
         self.state_changed.emit()
@@ -221,6 +229,7 @@ class AppController(QtCore.QObject):
                 self.recent_friends = self.friend_service.remember_friend(profile.uid, profile.nickname, profile.avatar_url)
         self.recent_friends = self.friend_service.pin_recent_friend(uid)
         self.friend_sidebar_state.pinned_friend_uids = [item.uid for item in self.recent_friends if item.is_pinned]
+        self._sync_current_friend_pinned_state()
         self.friend_lists_changed.emit()
         self._invalidate_relation_cache()
         self.state_changed.emit()
@@ -234,6 +243,7 @@ class AppController(QtCore.QObject):
             return
         self.recent_friends = self.friend_service.unpin_recent_friend(uid)
         self.friend_sidebar_state.pinned_friend_uids = [item.uid for item in self.recent_friends if item.is_pinned]
+        self._sync_current_friend_pinned_state()
         self.friend_lists_changed.emit()
         self._invalidate_relation_cache()
         self.state_changed.emit()
@@ -244,6 +254,7 @@ class AppController(QtCore.QObject):
         self.recent_friends = self.friend_service.delete_recent_friend(uid)
         if self.session_state.current_friend and self.session_state.current_friend.uid == uid:
             self.session_state.current_friend = self.recent_friends[0] if self.recent_friends else None
+        self._sync_current_friend_pinned_state()
         self.friend_lists_changed.emit()
         self._invalidate_relation_cache()
         self.state_changed.emit()
@@ -254,6 +265,8 @@ class AppController(QtCore.QObject):
 
     def clear_recent_friends(self) -> None:
         self.recent_friends = self.friend_service.clear_recent_friends()
+        self.friend_sidebar_state.pinned_friend_uids = []
+        self._sync_current_friend_pinned_state()
         self.friend_lists_changed.emit()
         self._invalidate_relation_cache()
         self.state_changed.emit()

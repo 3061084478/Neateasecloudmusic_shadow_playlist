@@ -56,6 +56,25 @@ class FriendPinningTests(unittest.TestCase):
         controller.unpin_friend("100")
         self.assertFalse(any(item.is_pinned for item in controller.recent_friends))
 
+    def test_current_friend_pinned_state_tracks_pin_toggle(self) -> None:
+        controller = AppController(workspace_root=str(self.temp_dir))
+        target = FriendEntry(uid="100", nickname="甲", avatar_url="http://example.com/a.jpg")
+        controller.all_friends = [target]
+        controller.session_state.current_friend = FriendEntry(
+            uid=target.uid,
+            nickname=target.nickname,
+            avatar_url=target.avatar_url,
+        )
+        controller.friend_sidebar_state.selected_friend_uid = target.uid
+        controller.friend_sidebar_state.active_list_type = "all"
+
+        controller.pin_friend(target.uid)
+        self.assertTrue(controller.current_friend())
+        self.assertTrue(controller.current_friend().is_pinned)
+
+        controller.unpin_friend(target.uid)
+        self.assertFalse(controller.current_friend().is_pinned)
+
 
 if __name__ == "__main__":
     unittest.main()

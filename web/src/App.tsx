@@ -210,7 +210,9 @@ function App() {
     }
     if (payload?.startup?.canAutoEnter) {
       invalidateData();
-      void hydrateHome(true);
+      if (rootScene !== "shell") {
+        void hydrateHome(true);
+      }
     } else if (refreshHome) {
       void hydrateHome(true);
     }
@@ -375,6 +377,27 @@ function App() {
     const timer = window.setInterval(async () => {
       try {
         const result = await invokeBridge<any>("pollQrStatus");
+        if (result?.code === 803 && result?.startup) {
+          if (rootScene === "startup") {
+            await applyStartupPayload(result.startup);
+            void hydrateHome(true);
+            void playStartupOutcome(result.startup, "qrSuccess");
+          } else {
+            if (result?.settings) {
+              applySettingsPayload(result.settings);
+            }
+            if (result?.shell) {
+              applyShellPayload(result.shell);
+            }
+            setQrPolling(false);
+            try {
+              await invokeBridge("restartApplication");
+            } catch (_restartError) {
+              await restartStartupVerification();
+            }
+          }
+          return;
+        }
         if (result?.startup) {
           await applyStartupPayload(result.startup);
         }
@@ -384,17 +407,13 @@ function App() {
         if (result?.shell) {
           applyShellPayload(result.shell);
         }
-        if (result?.code === 803 && result?.startup) {
-          void hydrateHome(true);
-          void playStartupOutcome(result.startup, "qrSuccess");
-        }
       } catch (error) {
         notify(error instanceof Error ? error.message : "二维码轮询失败。");
         setQrPolling(false);
       }
     }, 2400);
     return () => window.clearInterval(timer);
-  }, [qrPolling]);
+  }, [qrPolling, rootScene]);
 
   useEffect(() => {
     if (activeToast || !toastQueue.length) {
@@ -493,6 +512,29 @@ function App() {
     setShellEntryMode(routeRef.current === "home" ? "shell-enter-home" : "steady");
     setStartupPhase("enterShell");
     setRootScene("transitioning");
+  }
+
+  async function restartStartupVerification() {
+    startupTimelineStartedRef.current = false;
+    startupIntroResolvedRef.current = false;
+    setQrPolling(false);
+    setStartupBusyLabel("正在重新验证登录状态...");
+    routeRef.current = "home";
+    setRoute("home");
+    setRouteDirection(1);
+    setShellEntryMode("steady");
+    setShellEntryStarted(false);
+    setRailCollapsed(false);
+    setStartupPayload(null);
+    setStartupPhase("booting");
+    setRootScene("startup");
+    try {
+      await invokeBridge("navigate", "home");
+      await wait(80);
+      await refreshStartup("probeStartupStatus", false);
+    } finally {
+      setStartupBusyLabel("");
+    }
   }
 
   async function playStartupOutcome(payload: StartupPayload | null, source: "initial" | "primary" | "retry" | "qrSuccess") {

@@ -25,9 +25,3 @@ class MainWindow(QtWidgets.QMainWindow):
         self.web_shell_page = WebShellPage(controller)
         root_layout.addWidget(self.web_shell_page, 1)
         self.web_shell_page.ensure_loaded()
-
-    def show_app_shell(self) -> None:
-        self.web_shell_page.ensure_loaded()
-
-    def show_startup(self) -> None:
-        self.web_shell_page.ensure_loaded()
