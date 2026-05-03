@@ -46,9 +46,11 @@ class StartupStateTests(unittest.TestCase):
         self.assertEqual(summary["strategy"], "manual_id")
         self.assertTrue(summary["is_private"])
 
-    def test_apply_startup_authenticated_state_uses_local_shadow_summary(self) -> None:
+    def test_build_session_state_uses_local_shadow_summary_when_remote_shadow_skipped(self) -> None:
         controller = AppController(workspace_root=str(self.temp_dir))
-        state = controller.apply_startup_authenticated_state()
+        controller.bootstrap.is_api_ready = Mock(return_value=True)
+        controller.bootstrap.is_cookie_valid = Mock(return_value=True)
+        state = controller.build_session_state(fetch_account_profile=False, fetch_shadow_playlist=False)
         self.assertEqual(state.mode, "real")
         self.assertEqual(state.api_status, "online")
         self.assertEqual(state.cookie_status, "valid")

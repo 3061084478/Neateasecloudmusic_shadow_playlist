@@ -78,21 +78,6 @@ class AppController(QtCore.QObject):
         self.state_changed.emit()
         return self.session_state
 
-    def apply_startup_authenticated_state(self) -> AppSessionState:
-        self.session_state = AppSessionState(
-            mode="real",
-            api_status="online",
-            cookie_status="valid",
-            account_profile=self.session_state.account_profile,
-            current_friend=self.session_state.current_friend,
-            current_shadow_playlist=self._shadow_summary_from_payload(
-                self.playlist_service.get_local_shadow_playlist_summary()
-            ),
-        )
-        self._invalidate_relation_cache()
-        self.state_changed.emit()
-        return self.session_state
-
     def build_session_state(self, fetch_account_profile: bool = True, fetch_shadow_playlist: bool = True) -> AppSessionState:
         api_ready = self.bootstrap.is_api_ready()
         cookie_valid = self.bootstrap.is_cookie_valid() if api_ready else False
@@ -234,10 +219,6 @@ class AppController(QtCore.QObject):
         self._invalidate_relation_cache()
         self.state_changed.emit()
 
-    def pin_current_friend(self) -> None:
-        uid = self.friend_sidebar_state.selected_friend_uid or (self.session_state.current_friend.uid if self.session_state.current_friend else "")
-        self.pin_friend(uid)
-
     def unpin_friend(self, uid: str) -> None:
         if not uid:
             return
@@ -258,10 +239,6 @@ class AppController(QtCore.QObject):
         self.friend_lists_changed.emit()
         self._invalidate_relation_cache()
         self.state_changed.emit()
-
-    def delete_current_recent_friend(self) -> None:
-        uid = self.friend_sidebar_state.selected_friend_uid
-        self.delete_recent_friend(uid)
 
     def clear_recent_friends(self) -> None:
         self.recent_friends = self.friend_service.clear_recent_friends()

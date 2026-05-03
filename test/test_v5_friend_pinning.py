@@ -38,7 +38,7 @@ class FriendPinningTests(unittest.TestCase):
         controller.friend_sidebar_state.selected_friend_uid = target.uid
         controller.friend_sidebar_state.active_list_type = "all"
 
-        controller.pin_current_friend()
+        controller.pin_friend(target.uid)
 
         self.assertTrue(controller.recent_friends)
         self.assertEqual(controller.recent_friends[0].uid, target.uid)
