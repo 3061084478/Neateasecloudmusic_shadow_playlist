@@ -118,6 +118,67 @@ class WebBridge(QtCore.QObject):
             },
         }
 
+    def _clear_qr_session(self, status: str = "idle") -> None:
+        self.qr_key = ""
+        self.qr_url = ""
+        self.qr_status = status
+        self.qr_image_data_url = ""
+
+    def _ensure_qr_session(self) -> None:
+        if self.qr_key and self.qr_status in {"ready", "waiting-scan", "waiting-confirm"} and self.qr_image_data_url:
+            return
+        payload = self.controller.bootstrap.create_qr_session()
+        self.qr_key = str(payload.get("key") or "")
+        self.qr_url = str(payload.get("qr_url") or "")
+        self.qr_status = "ready"
+        self.qr_image_data_url = self._pixmap_to_data_url(self.controller.bootstrap.build_qr_pixmap(self.qr_url))
+
+    def _refresh_runtime_state(
+        self,
+        fetch_account_profile: bool = True,
+        fetch_shadow_playlist: bool = False,
+        load_friends: bool = True,
+    ):
+        state = self.controller.refresh_session_state(
+            fetch_account_profile=fetch_account_profile,
+            fetch_shadow_playlist=fetch_shadow_playlist,
+        )
+        if state.mode == "real" and load_friends:
+            try:
+                friends = self.controller.load_all_friends(force_refresh=False)
+                self.controller.apply_all_friends(friends)
+            except Exception as exc:
+                self._set_error(str(exc))
+        return state
+
+    def _startup_payload(self) -> Dict[str, Any]:
+        state = self.controller.session_state
+        is_authenticated = state.mode == "real" and state.api_status == "online" and state.cookie_status == "valid"
+        has_qr = bool(self.qr_key and self.qr_status in {"ready", "waiting-scan", "waiting-confirm"})
+        return {
+            "connection": {
+                "mode": state.mode,
+                "apiStatus": state.api_status,
+                "cookieStatus": state.cookie_status,
+                "accountNickname": state.account_profile.nickname or "未登录",
+            },
+            "qr": {
+                "status": self.qr_status,
+                "url": self.qr_url,
+                "imageDataUrl": self.qr_image_data_url,
+            },
+            "diagnostics": {
+                "logs": list(self.logs),
+                "lastError": self.last_error,
+            },
+            "startup": {
+                "isAuthenticated": is_authenticated,
+                "canAutoEnter": is_authenticated,
+                "hasQr": has_qr,
+            },
+            "shell": self._shell_payload(),
+        }
+
     def _find_friend(self, uid: str) -> FriendEntry | None:
         uid_text = str(uid or "").strip()
         if not uid_text:
@@ -168,6 +229,56 @@ class WebBridge(QtCore.QObject):
     @QtCore.Slot(result=str)
     def getShellPayload(self) -> str:
         return _json_ok(self._shell_payload())
+
+    @QtCore.Slot(result=str)
+    def getStartupPayload(self) -> str:
+        try:
+            state = self._refresh_runtime_state(fetch_account_profile=True, fetch_shadow_playlist=False, load_friends=True)
+            if state.mode == "real":
+                self._clear_qr_session("idle")
+            elif state.api_status != "online":
+                self._clear_qr_session("idle")
+            self._append_log("已同步启动状态。")
+            return _json_ok(self._startup_payload())
+        except Exception as exc:
+            self._set_error(str(exc))
+            return _json_error(str(exc))
+
+    @QtCore.Slot(bool, result=str)
+    def probeStartupStatus(self, reveal_qr_if_missing: bool) -> str:
+        try:
+            state = self._refresh_runtime_state(fetch_account_profile=True, fetch_shadow_playlist=False, load_friends=True)
+            if state.mode == "real":
+                self._clear_qr_session("idle")
+                self._append_log("检测到有效登录态。")
+            elif state.api_status != "online":
+                self._clear_qr_session("idle")
+                self._append_log("未检测到可用 API。")
+            elif reveal_qr_if_missing:
+                self._ensure_qr_session()
+                self._append_log("未检测到 cookie，已准备二维码。")
+            else:
+                self._append_log("已重新检测 API / Cookie 状态。")
+            return _json_ok(self._startup_payload())
+        except Exception as exc:
+            self._set_error(str(exc))
+            return _json_error(str(exc))
+
+    @QtCore.Slot(result=str)
+    def runStartupPrimaryAction(self) -> str:
+        try:
+            self.controller.bootstrap.ensure_api_ready()
+            state = self._refresh_runtime_state(fetch_account_profile=True, fetch_shadow_playlist=False, load_friends=True)
+            if state.mode == "real":
+                self._clear_qr_session("idle")
+                self._append_log("启动流程已确认登录态有效。")
+            else:
+                self._ensure_qr_session()
+                self._append_log("API 已就绪，未检测到 cookie，已生成二维码。")
+            return _json_ok(self._startup_payload())
+        except Exception as exc:
+            self._set_error(str(exc))
+            return _json_error(str(exc))
 
     @QtCore.Slot(result=str)
     def refreshShellState(self) -> str:
@@ -523,10 +634,10 @@ class WebBridge(QtCore.QObject):
     @QtCore.Slot(result=str)
     def detectApi(self) -> str:
         try:
-            ready = bool(self.controller.bootstrap.is_api_ready())
-            self.controller.refresh_session_state(fetch_account_profile=False, fetch_shadow_playlist=False)
+            state = self._refresh_runtime_state(fetch_account_profile=False, fetch_shadow_playlist=False, load_friends=False)
+            ready = state.api_status == "online"
             self._append_log("API 状态：在线" if ready else "API 状态：离线")
-            return _json_ok({"ready": ready, "settings": self._settings_payload(), "shell": self._shell_payload()})
+            return _json_ok({"ready": ready, "startup": self._startup_payload(), "settings": self._settings_payload(), "shell": self._shell_payload()})
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))
@@ -535,9 +646,9 @@ class WebBridge(QtCore.QObject):
     def startApi(self) -> str:
         try:
             self.controller.bootstrap.ensure_api_ready()
-            self.controller.refresh_session_state(fetch_account_profile=False, fetch_shadow_playlist=False)
+            self._refresh_runtime_state(fetch_account_profile=False, fetch_shadow_playlist=False, load_friends=False)
             self._append_log("已尝试启动本地 API。")
-            return _json_ok({"settings": self._settings_payload(), "shell": self._shell_payload()})
+            return _json_ok({"startup": self._startup_payload(), "settings": self._settings_payload(), "shell": self._shell_payload()})
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))
@@ -545,12 +656,12 @@ class WebBridge(QtCore.QObject):
     @QtCore.Slot(result=str)
     def detectCookie(self) -> str:
         try:
-            valid = bool(self.controller.bootstrap.is_cookie_valid())
+            state = self._refresh_runtime_state(fetch_account_profile=True, fetch_shadow_playlist=False, load_friends=True)
+            valid = state.mode == "real"
             if valid:
-                self.controller.apply_startup_authenticated_state()
-                self.controller.refresh_session_state(True, True)
+                self._clear_qr_session("idle")
             self._append_log("Cookie 状态：有效" if valid else "Cookie 状态：无效")
-            return _json_ok({"valid": valid, "settings": self._settings_payload(), "shell": self._shell_payload()})
+            return _json_ok({"valid": valid, "startup": self._startup_payload(), "settings": self._settings_payload(), "shell": self._shell_payload()})
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))
@@ -558,13 +669,9 @@ class WebBridge(QtCore.QObject):
     @QtCore.Slot(result=str)
     def startQrLogin(self) -> str:
         try:
-            payload = self.controller.bootstrap.create_qr_session()
-            self.qr_key = str(payload.get("key") or "")
-            self.qr_url = str(payload.get("qr_url") or "")
-            self.qr_status = "ready"
-            self.qr_image_data_url = self._pixmap_to_data_url(self.controller.bootstrap.build_qr_pixmap(self.qr_url))
+            self._ensure_qr_session()
             self._append_log("已生成二维码。")
-            return _json_ok(self._settings_payload())
+            return _json_ok({"startup": self._startup_payload(), "settings": self._settings_payload(), "shell": self._shell_payload()})
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))
@@ -582,12 +689,11 @@ class WebBridge(QtCore.QObject):
                 self.qr_status = "waiting-confirm"
             elif code == 803:
                 self.qr_status = "success"
-                self.controller.apply_startup_authenticated_state()
-                self.controller.refresh_session_state(True, True)
+                self._refresh_runtime_state(fetch_account_profile=True, fetch_shadow_playlist=False, load_friends=True)
             elif code == 800:
                 self.qr_status = "expired"
             self._append_log(f"二维码状态：{code}")
-            return _json_ok({"code": code, "settings": self._settings_payload(), "shell": self._shell_payload()})
+            return _json_ok({"code": code, "startup": self._startup_payload(), "settings": self._settings_payload(), "shell": self._shell_payload()})
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))
@@ -597,12 +703,9 @@ class WebBridge(QtCore.QObject):
         try:
             self.controller.bootstrap.clear_saved_cookie()
             self.controller.apply_initial_local_state()
-            self.qr_key = ""
-            self.qr_url = ""
-            self.qr_status = "idle"
-            self.qr_image_data_url = ""
+            self._clear_qr_session("idle")
             self._append_log("已清空本地 Cookie。")
-            return _json_ok({"settings": self._settings_payload(), "shell": self._shell_payload()})
+            return _json_ok({"startup": self._startup_payload(), "settings": self._settings_payload(), "shell": self._shell_payload()})
         except Exception as exc:
             self._set_error(str(exc))
             return _json_error(str(exc))

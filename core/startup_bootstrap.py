@@ -174,7 +174,7 @@ class StartupBootstrap:
         return str(max(matches, key=lambda item: item.stat().st_mtime))
 
     def is_api_ready(self) -> bool:
-        return self.is_api_port_open()
+        return self.is_api_http_responding()
 
     def is_api_port_open(self) -> bool:
         host, port = self._resolve_api_host_port()

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { initBridge, invokeBridge } from "./bridge";
 import {
@@ -11,73 +11,21 @@ import {
 } from "./constants";
 import { FriendRail, TopBar } from "./components/shell";
 import { EmptyState } from "./components/primitives";
+import { SharedSceneBackground } from "./components/SharedSceneBackground";
+import { StartupScene } from "./components/StartupScene";
 import { HomeRoute } from "./routes/HomeRoute";
 import { SongRoute } from "./routes/SongRoute";
 import { ChatRoute } from "./routes/ChatRoute";
 import { ShadowRoute } from "./routes/ShadowRoute";
 import { RelationRoute } from "./routes/RelationRoute";
 import { SettingsRoute } from "./routes/SettingsRoute";
+import type { RootScene, ShellEntryMode, StartupPayload, StartupPhase } from "./startup";
 
 const ROUTE_ORDER: RouteKey[] = ["home", "song", "shadow", "chat", "relation", "settings"];
-
-type ShellButterflyRole = "hero" | "support";
-
-const SHELL_BUTTERFLIES: Array<{ role: ShellButterflyRole; src: string; style: CSSProperties }> = [
-  {
-    role: "hero",
-    src: "brand/scene_butterfly_1.png",
-    style: {
-      "--x": "75.2%",
-      "--y": "19.9%",
-      "--size": "144px",
-      "--rotation": "-13deg",
-      "--blur": "0.8px",
-      "--opacity": "0.48",
-      "--brightness": "0.76",
-      "--contrast": "1.05",
-      "--rim-light": "0.28",
-      "--silhouette-strength": "0.26",
-      "--halo-opacity": "0.16",
-      "--lift": "-1px"
-    } as CSSProperties
-  },
-  {
-    role: "support",
-    src: "brand/scene_butterfly_2.png",
-    style: {
-      "--x": "58.8%",
-      "--y": "41.6%",
-      "--size": "130px",
-      "--rotation": "9deg",
-      "--blur": "1.2px",
-      "--opacity": "0.56",
-      "--brightness": "0.79",
-      "--contrast": "1.04",
-      "--rim-light": "0.3",
-      "--silhouette-strength": "0.36",
-      "--halo-opacity": "0.18",
-      "--lift": "1px"
-    } as CSSProperties
-  },
-  {
-    role: "support",
-    src: "brand/scene_butterfly_3.png",
-    style: {
-      "--x": "35.8%",
-      "--y": "69.2%",
-      "--size": "116px",
-      "--rotation": "14deg",
-      "--blur": "1.9px",
-      "--opacity": "0.5",
-      "--brightness": "0.77",
-      "--contrast": "1.03",
-      "--rim-light": "0.24",
-      "--silhouette-strength": "0.42",
-      "--halo-opacity": "0.16",
-      "--lift": "4px"
-    } as CSSProperties
-  }
-];
+const STARTUP_QR_POLLABLE = new Set(["ready", "waiting-scan", "waiting-confirm"]);
+const SHELL_HOME_ENTRY_TOTAL_MS = 5480;
+const SHELL_HOME_ENTRY_ARM_MS = 120;
+const STARTUP_EXIT_DURATION_MS = 720;
 
 const routeStageVariants = {
   initial: (direction: number) => ({
@@ -108,6 +56,15 @@ const routeStageVariants = {
   })
 };
 
+type AppToast = {
+  id: number;
+  message: string;
+  duration: number;
+  resolve: () => void;
+};
+
+const TOAST_DURATION_MS = 2400;
+
 function App() {
   const [bridgeReady, setBridgeReady] = useState(false);
   const [bootError, setBootError] = useState("");
@@ -118,7 +75,14 @@ function App() {
   const [friendListType, setFriendListType] = useState<FriendListType>("recent");
   const [friendKeyword, setFriendKeyword] = useState("");
   const [, setBusyLabel] = useState("");
-  const [toast, setToast] = useState("");
+  const [toastQueue, setToastQueue] = useState<AppToast[]>([]);
+  const [activeToast, setActiveToast] = useState<AppToast | null>(null);
+  const [rootScene, setRootScene] = useState<RootScene>("startup");
+  const [shellEntryMode, setShellEntryMode] = useState<ShellEntryMode>("steady");
+  const [shellEntryStarted, setShellEntryStarted] = useState(false);
+  const [startupPhase, setStartupPhase] = useState<StartupPhase>("booting");
+  const [startupPayload, setStartupPayload] = useState<StartupPayload | null>(null);
+  const [startupBusyLabel, setStartupBusyLabel] = useState("");
 
   const [homePayload, setHomePayload] = useState<any>(null);
   const [songResult, setSongResult] = useState<any>(null);
@@ -198,11 +162,67 @@ function App() {
   const relationWindow = relationWindowMode === "year" && relationYear ? `year:${relationYear}` : "all";
   const selectedCandidateIds = new Set<string>(shadowPayload?.selectedCandidateIds || []);
   const routeRef = useRef<RouteKey>("home");
+  const startupTimelineStartedRef = useRef(false);
+  const startupIntroResolvedRef = useRef(false);
+  const toastIdRef = useRef(0);
   const portalTarget = typeof document !== "undefined" ? document.body : null;
 
   useEffect(() => {
     routeRef.current = route;
   }, [route]);
+
+  function applyShellPayload(payload: any) {
+    if (!payload) {
+      return;
+    }
+    startTransition(() => {
+      setShell(payload);
+      updateRoute((payload?.activeRoute as RouteKey) || "home");
+      setFriendListType((payload?.friendRail?.activeListType as FriendListType) || "recent");
+      setFriendKeyword(String(payload?.friendRail?.searchKeyword || ""));
+    });
+  }
+
+  function applySettingsPayload(payload: any) {
+    setSettingsPayload(payload);
+    const ai = payload?.aiSettings || {};
+    setSettingsForm({
+      ai_enabled: Boolean(ai.ai_enabled),
+      ai_base_url: String(ai.ai_base_url || ""),
+      ai_model: String(ai.ai_model || ""),
+      ai_api_key: String(ai.ai_api_key || ""),
+      ai_timeout: Number(ai.ai_timeout || 20)
+    });
+  }
+
+  async function hydrateHome(force = false) {
+    if (!force && homePayload) {
+      return;
+    }
+    const payload = await invokeBridge<any>("getHomePayload");
+    setHomePayload(payload);
+  }
+
+  async function applyStartupPayload(payload: StartupPayload, refreshHome = false) {
+    setStartupPayload(payload);
+    if (payload?.shell) {
+      applyShellPayload(payload.shell);
+    }
+    if (payload?.startup?.canAutoEnter) {
+      invalidateData();
+      void hydrateHome(true);
+    } else if (refreshHome) {
+      void hydrateHome(true);
+    }
+    if (STARTUP_QR_POLLABLE.has(payload?.qr?.status || "")) {
+      setQrPolling(true);
+      return;
+    }
+    if (payload?.qr?.status === "success" || payload?.qr?.status === "expired" || payload?.qr?.status === "idle") {
+      setQrPolling(false);
+      setStartupPhase((current) => (current === "qrVisible" && !payload?.startup?.canAutoEnter ? "idle" : current));
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -213,12 +233,11 @@ function App() {
           return;
         }
         setBridgeReady(true);
-        const shellPayload = await invokeBridge<any>("getShellPayload");
+        const payload = await invokeBridge<StartupPayload>("getStartupPayload");
         if (!active) {
           return;
         }
-        applyShellPayload(shellPayload);
-        await loadHomePayload();
+        await applyStartupPayload(payload, true);
       } catch (error) {
         if (!active) {
           return;
@@ -233,6 +252,72 @@ function App() {
       delete window.__shadowReload;
     };
   }, []);
+
+  useEffect(() => {
+    if (!startupPayload || startupTimelineStartedRef.current) {
+      return;
+    }
+    startupTimelineStartedRef.current = true;
+    let cancelled = false;
+    const timers: number[] = [];
+    const schedule = (delay: number, phase: StartupPhase) => {
+      const timer = window.setTimeout(() => {
+        if (!cancelled) {
+          setStartupPhase(phase);
+        }
+      }, delay);
+      timers.push(timer);
+    };
+
+    schedule(100, "beamGrow");
+    schedule(1360, "beamRelax");
+    schedule(2060, "brandReveal");
+    schedule(2980, "brandHold");
+    schedule(3380, "brandLift");
+    schedule(3800, "ctaReveal");
+    schedule(4440, "idle");
+
+    return () => {
+      cancelled = true;
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [startupPayload]);
+
+  useEffect(() => {
+    if (rootScene !== "startup" || startupPhase !== "idle" || !startupPayload || startupIntroResolvedRef.current) {
+      return;
+    }
+    startupIntroResolvedRef.current = true;
+    void playStartupOutcome(startupPayload, "initial");
+  }, [rootScene, startupPhase, startupPayload]);
+
+  useEffect(() => {
+    if (rootScene !== "transitioning") {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setRootScene("shell");
+    }, STARTUP_EXIT_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [rootScene]);
+
+  useEffect(() => {
+    if (rootScene !== "shell" || shellEntryMode !== "shell-enter-home") {
+      setShellEntryStarted(false);
+      return;
+    }
+    setShellEntryStarted(false);
+    const armTimer = window.setTimeout(() => {
+      setShellEntryStarted(true);
+    }, SHELL_HOME_ENTRY_ARM_MS);
+    const timer = window.setTimeout(() => {
+      setShellEntryMode("steady");
+    }, SHELL_HOME_ENTRY_TOTAL_MS);
+    return () => {
+      window.clearTimeout(armTimer);
+      window.clearTimeout(timer);
+    };
+  }, [rootScene, shellEntryMode]);
 
   useEffect(() => {
     if (!bridgeReady || route !== "song") {
@@ -284,68 +369,63 @@ function App() {
   }, [bridgeReady, route, relationWindowMode, relationYear]);
 
   useEffect(() => {
-    if (!qrPolling || route !== "settings") {
+    if (!qrPolling) {
       return;
     }
     const timer = window.setInterval(async () => {
       try {
         const result = await invokeBridge<any>("pollQrStatus");
+        if (result?.startup) {
+          await applyStartupPayload(result.startup);
+        }
         if (result?.settings) {
           applySettingsPayload(result.settings);
         }
         if (result?.shell) {
           applyShellPayload(result.shell);
         }
-        const status = result?.settings?.qr?.status;
-        if (status === "success" || status === "expired" || status === "idle") {
-          setQrPolling(false);
-          void loadHomePayload();
+        if (result?.code === 803 && result?.startup) {
+          void hydrateHome(true);
+          void playStartupOutcome(result.startup, "qrSuccess");
         }
       } catch (error) {
-        setToast(error instanceof Error ? error.message : "二维码轮询失败。");
+        notify(error instanceof Error ? error.message : "二维码轮询失败。");
         setQrPolling(false);
       }
     }, 2400);
     return () => window.clearInterval(timer);
-  }, [qrPolling, route]);
+  }, [qrPolling]);
 
   useEffect(() => {
-    if (!toast) {
+    if (activeToast || !toastQueue.length) {
+      return;
+    }
+    const [nextToast, ...rest] = toastQueue;
+    setToastQueue(rest);
+    setActiveToast(nextToast);
+  }, [activeToast, toastQueue]);
+
+  useEffect(() => {
+    if (!activeToast) {
       return;
     }
     const timer = window.setTimeout(() => {
-      setToast("");
-    }, 5000);
+      activeToast.resolve();
+      setActiveToast((current) => (current?.id === activeToast.id ? null : current));
+    }, activeToast.duration);
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [activeToast]);
 
   async function runBusy<T>(label: string, task: () => Promise<T>): Promise<T | undefined> {
     setBusyLabel(label);
     try {
       return await task();
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "操作失败。");
+      notify(error instanceof Error ? error.message : "操作失败。");
       return undefined;
     } finally {
       setBusyLabel("");
     }
-  }
-
-  function invalidateData() {
-    setHomePayload(null);
-    setSongResult(null);
-    setChatResult(null);
-    setShadowPayload(null);
-    setRelationPayload(null);
-    setFriendInsight(null);
-    setSelfInsight(null);
-  }
-
-  function applyShellPayload(payload: any) {
-    setShell(payload);
-    updateRoute((payload?.activeRoute as RouteKey) || "home");
-    setFriendListType((payload?.friendRail?.activeListType as FriendListType) || "recent");
-    setFriendKeyword(String(payload?.friendRail?.searchKeyword || ""));
   }
 
   function updateRoute(nextRoute: RouteKey) {
@@ -359,23 +439,130 @@ function App() {
     setRoute(nextRoute);
   }
 
-  function applySettingsPayload(payload: any) {
-    setSettingsPayload(payload);
-    const ai = payload?.aiSettings || {};
-    setSettingsForm({
-      ai_enabled: Boolean(ai.ai_enabled),
-      ai_base_url: String(ai.ai_base_url || ""),
-      ai_model: String(ai.ai_model || ""),
-      ai_api_key: String(ai.ai_api_key || ""),
-      ai_timeout: Number(ai.ai_timeout || 20)
+  function invalidateData() {
+    setHomePayload(null);
+    setSongResult(null);
+    setChatResult(null);
+    setShadowPayload(null);
+    setRelationPayload(null);
+    setFriendInsight(null);
+    setSelfInsight(null);
+  }
+
+  async function refreshStartup(method: "getStartupPayload" | "probeStartupStatus" | "runStartupPrimaryAction", ...args: any[]) {
+    const payload = await invokeBridge<StartupPayload>(method, ...args);
+    await applyStartupPayload(payload);
+    return payload;
+  }
+
+  function wait(ms: number) {
+    return new Promise<void>((resolve) => {
+      window.setTimeout(resolve, ms);
     });
   }
 
-  async function loadHomePayload(force = false) {
-    if (homePayload && !force) {
+  function enqueueToast(message: string, duration = TOAST_DURATION_MS) {
+    return new Promise<void>((resolve) => {
+      const nextToast: AppToast = {
+        id: toastIdRef.current + 1,
+        message,
+        duration,
+        resolve
+      };
+      toastIdRef.current = nextToast.id;
+      setToastQueue((current) => [...current, nextToast]);
+    });
+  }
+
+  function notify(message: string, duration = TOAST_DURATION_MS) {
+    void enqueueToast(message, duration);
+  }
+
+  function getStartupSnapshot(payload: StartupPayload | null) {
+    return {
+      apiOnline: payload?.connection?.apiStatus === "online",
+      cookieValid: payload?.connection?.cookieStatus === "valid",
+      hasQr: Boolean(payload?.startup?.hasQr && payload?.qr?.imageDataUrl)
+    };
+  }
+
+  function beginShellTransition() {
+    if (rootScene !== "startup") {
       return;
     }
-    setHomePayload(await invokeBridge<any>("getHomePayload"));
+    setShellEntryMode(routeRef.current === "home" ? "shell-enter-home" : "steady");
+    setStartupPhase("enterShell");
+    setRootScene("transitioning");
+  }
+
+  async function playStartupOutcome(payload: StartupPayload | null, source: "initial" | "primary" | "retry" | "qrSuccess") {
+    if (!payload || rootScene !== "startup") {
+      return;
+    }
+
+    const snapshot = getStartupSnapshot(payload);
+
+    if (!snapshot.apiOnline) {
+      setQrPolling(false);
+      setStartupPhase((current) => (current === "qrVisible" ? "idle" : current));
+      await enqueueToast("未检测到 API");
+      await enqueueToast("请启动 API");
+      return;
+    }
+
+    if (source !== "qrSuccess") {
+      await enqueueToast("API 已启动");
+    }
+
+    if (!snapshot.cookieValid) {
+      let nextPayload = payload;
+      if (!snapshot.hasQr) {
+        nextPayload = await refreshStartup("probeStartupStatus", true);
+      }
+      await enqueueToast("未检测到 cookie，请扫码登录");
+      if (nextPayload?.startup?.hasQr) {
+        setStartupPhase("qrVisible");
+      }
+      return;
+    }
+
+    await enqueueToast(source === "qrSuccess" ? "登录状态正常" : "Cookie 完整");
+    await wait(450);
+    beginShellTransition();
+  }
+
+  async function handleStartupPrimaryAction() {
+    setStartupBusyLabel("正在检测 API 环境...");
+    try {
+      const payload = await refreshStartup("runStartupPrimaryAction");
+      await playStartupOutcome(payload, "primary");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "启动流程失败。");
+      try {
+        await refreshStartup("getStartupPayload");
+      } catch {
+        // Ignore payload refresh failures after surfacing the primary error.
+      }
+    } finally {
+      setStartupBusyLabel("");
+    }
+  }
+
+  async function handleStartupRetry() {
+    setStartupBusyLabel("正在重新检测状态...");
+    try {
+      const payload = await refreshStartup("probeStartupStatus", true);
+      await playStartupOutcome(payload, "retry");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "重新检测失败。");
+      try {
+        await refreshStartup("getStartupPayload");
+      } catch {
+        // Ignore payload refresh failures after surfacing the primary error.
+      }
+    } finally {
+      setStartupBusyLabel("");
+    }
   }
 
   async function loadSongActiveDateList(scope: string, pages: number) {
@@ -426,7 +613,7 @@ function App() {
 
   async function ensureRouteData(nextRoute: RouteKey, force = false) {
     if (nextRoute === "home") {
-      await loadHomePayload(force);
+      await hydrateHome(force);
     } else if (nextRoute === "shadow") {
       await loadShadowPayload(force);
     } else if (nextRoute === "relation") {
@@ -453,8 +640,8 @@ function App() {
       const payload = await invokeBridge<any>("refreshShellState");
       applyShellPayload(payload);
       invalidateData();
-      await Promise.all([loadHomePayload(true), ensureRouteData(route, true)]);
-      setToast("当前状态已刷新。");
+      await Promise.all([hydrateHome(true), ensureRouteData(route, true)]);
+      notify("当前状态已刷新。");
     });
   }
 
@@ -472,8 +659,8 @@ function App() {
       invalidateData();
       setSongResult(null);
       setChatResult(null);
-      await Promise.all([loadHomePayload(true), ensureRouteData(route, true)]);
-      setToast("当前好友已切换。");
+      await Promise.all([hydrateHome(true), ensureRouteData(route, true)]);
+      notify("当前好友已切换。");
     });
   }
 
@@ -485,7 +672,7 @@ function App() {
     await runBusy("查询歌曲分享", async () => {
       const payload = await invokeBridge<any>("querySongShares", JSON.stringify(songFilters));
       setSongResult(payload);
-      setToast(`歌曲分享已返回 ${payload?.summary?.count || 0} 条结果。`);
+      notify(`歌曲分享已返回 ${payload?.summary?.count || 0} 条结果。`);
     });
   }
 
@@ -493,7 +680,7 @@ function App() {
     await runBusy("查询聊天记录", async () => {
       const payload = await invokeBridge<any>("queryChatHistory", JSON.stringify(chatFilters));
       setChatResult(payload);
-      setToast(`聊天记录已返回 ${payload?.summary?.count || 0} 条结果。`);
+      notify(`聊天记录已返回 ${payload?.summary?.count || 0} 条结果。`);
     });
   }
 
@@ -507,7 +694,7 @@ function App() {
       const [shellPayload, shadowData] = await Promise.all([invokeBridge<any>("getShellPayload"), invokeBridge<any>("getShadowStatus")]);
       applyShellPayload(shellPayload);
       setShadowPayload((prev: any) => (prev ? { ...prev, status: shadowData } : prev));
-      setToast("目标歌单设置已保存。");
+      notify("目标歌单设置已保存。");
     });
   }
 
@@ -539,7 +726,7 @@ function App() {
         lastCandidateSummary: result?.summary || {},
         currentFriend: shell?.currentFriend
       }));
-      setToast(`候选歌曲已刷新，当前 ${result?.summary?.count || 0} 首。`);
+      notify(`候选歌曲已刷新，当前 ${result?.summary?.count || 0} 首。`);
     });
   }
 
@@ -562,7 +749,7 @@ function App() {
       const status = payload?.status || (await invokeBridge<any>("getShadowStatus"));
       setShadowPayload((prev: any) => (prev ? { ...prev, status } : { status }));
       setShadowTab("status");
-      setToast(`影子歌单已生成 ${payload?.result?.generated_count || 0} 首歌曲。`);
+      notify(`影子歌单已生成 ${payload?.result?.generated_count || 0} 首歌曲。`);
     });
   }
 
@@ -576,7 +763,7 @@ function App() {
       const payload = await invokeBridge<any>("getRelationPayload", relationWindow, force);
       setRelationPayload(payload);
       await loadReports();
-      setToast("音乐关系已刷新。");
+      notify("音乐关系已刷新。");
     });
   }
 
@@ -584,25 +771,25 @@ function App() {
     await runBusy("全好友归档", async () => {
       const payload = await invokeBridge<any>("requestGlobalArchiveSync");
       invalidateData();
-      await Promise.all([loadHomePayload(true), loadRelationPayload(true)]);
+      await Promise.all([hydrateHome(true), loadRelationPayload(true)]);
       const failedCount = Array.isArray(payload?.failed) ? payload.failed.length : 0;
       if (failedCount > 0) {
-        setToast(`全好友归档完成，失败 ${failedCount} 位。`);
+        notify(`全好友归档完成，失败 ${failedCount} 位。`);
         return;
       }
-      setToast(`全好友归档完成，补齐 ${payload?.delta_synced || 0} 位，首次归档 ${payload?.full_synced || 0} 位。`);
+      notify(`全好友归档完成，补齐 ${payload?.delta_synced || 0} 位，首次归档 ${payload?.full_synced || 0} 位。`);
     });
   }
 
   async function handleGenerateFriendAi() {
     if (!currentFriend?.uid) {
-      setToast("请先选择好友。");
+      notify("请先选择好友。");
       return;
     }
     await runBusy("生成好友 AI 文段", async () => {
       const payload = await invokeBridge<any>("generateFriendAi", currentFriend.uid, friendAiMode, relationWindow);
       setFriendInsight(payload);
-      setToast("好友 AI 文段已生成。");
+      notify("好友 AI 文段已生成。");
     });
   }
 
@@ -610,18 +797,18 @@ function App() {
     await runBusy("生成社交 AI 文段", async () => {
       const payload = await invokeBridge<any>("generateSelfAi", selfAiMode, relationWindow);
       setSelfInsight(payload);
-      setToast("音乐社交 AI 文段已生成。");
+      notify("音乐社交 AI 文段已生成。");
     });
   }
 
   async function handleExportFriendReport() {
     if (!currentFriend?.uid) {
-      setToast("请先选择好友。");
+      notify("请先选择好友。");
       return;
     }
     await runBusy("导出好友报告", async () => {
       const payload = await invokeBridge<any>("exportFriendReport", currentFriend.uid, friendAiMode, relationWindow);
-      setToast(`好友报告已导出：${payload?.path || ""}`);
+      notify(`好友报告已导出：${payload?.path || ""}`);
       await loadReports();
       setRelationTab("reports");
     });
@@ -630,7 +817,7 @@ function App() {
   async function handleExportSelfReport() {
     await runBusy("导出个人报告", async () => {
       const payload = await invokeBridge<any>("exportSelfReport", selfAiMode, relationWindow);
-      setToast(`个人报告已导出：${payload?.path || ""}`);
+      notify(`个人报告已导出：${payload?.path || ""}`);
       await loadReports();
       setRelationTab("reports");
     });
@@ -639,7 +826,7 @@ function App() {
   async function handleExportAnnualReport() {
     await runBusy("导出年度报告", async () => {
       const payload = await invokeBridge<any>("exportAnnualReport", "annual", relationWindow);
-      setToast(`年度回顾已导出：${payload?.path || ""}`);
+      notify(`年度回顾已导出：${payload?.path || ""}`);
       await loadReports();
       setRelationTab("reports");
     });
@@ -656,13 +843,16 @@ function App() {
         ai_timeout: Number(payload.ai_timeout || 20)
       });
       applySettingsPayload(await invokeBridge<any>("getSettingsPayload"));
-      setToast("AI 配置已保存。");
+      notify("AI 配置已保存。");
     });
   }
 
   async function handleSettingsAction(method: string, successText: string) {
     await runBusy(successText, async () => {
       const payload = await invokeBridge<any>(method);
+      if (payload?.startup) {
+        await applyStartupPayload(payload.startup);
+      }
       if (payload?.settings) {
         applySettingsPayload(payload.settings);
       } else if (payload?.connection || payload?.diagnostics) {
@@ -675,7 +865,7 @@ function App() {
         setQrPolling(true);
       }
       invalidateData();
-      setToast(successText);
+      notify(successText);
     });
   }
 
@@ -689,225 +879,308 @@ function App() {
         title: "歌曲分享",
         summary: "查询分享歌曲",
         detail: `${overview.song_share_count || 0} 首`,
-        actions: [{ label: "进入", onClick: () => void handleNavigate("song") }],
+        actions: [{ label: "进入", onClick: () => void handleNavigate("song") }]
       },
       {
         title: "影子歌单",
         summary: playlistSummary.name || "未设置歌单",
         detail: `${overview.playlist_track_count || 0} 首`,
-        actions: [{ label: "进入", onClick: () => void handleNavigate("shadow") }],
+        actions: [{ label: "进入", onClick: () => void handleNavigate("shadow") }]
       },
       {
         title: "聊天记录",
         summary: "查询特定筛选条件下的聊天内容",
         detail: `${overview.chat_count || 0} 条`,
-        actions: [{ label: "进入", onClick: () => void handleNavigate("chat") }],
+        actions: [{ label: "进入", onClick: () => void handleNavigate("chat") }]
       },
       {
         title: "音乐关系",
         summary: `共同歌手：${relationSummary.shared_artists || "无"}`,
         detail: `我的社交标签：${relationSummary.self_social_tag || "暂无"}`,
         actions: [
-          { label: "单好友画像", onClick: () => { setRelationTab("friend"); void handleNavigate("relation"); } },
-          { label: "我的音乐社交", onClick: () => { setRelationTab("self"); void handleNavigate("relation"); } },
-        ],
+          {
+            label: "单好友画像",
+            onClick: () => {
+              setRelationTab("friend");
+              void handleNavigate("relation");
+            }
+          },
+          {
+            label: "我的音乐社交",
+            onClick: () => {
+              setRelationTab("self");
+              void handleNavigate("relation");
+            }
+          }
+        ]
       }
     ];
   }, [homePayload]);
+
+  const beamStage = startupPhase === "booting" ? "booting" : startupPhase === "beamGrow" ? "beamGrow" : startupPhase === "beamRelax" ? "beamRelax" : "settled";
+  const showShell = rootScene === "shell";
+  const shellHomeEntryActive = shellEntryMode === "shell-enter-home";
 
   if (bootError) {
     return <div className="boot-state">{bootError}</div>;
   }
 
-  if (!bridgeReady || !shell) {
-    return <div className="boot-state">Shadow Web Shell 正在连接桌面壳…</div>;
-  }
-
   return (
-    <div className="app-shell">
-      <div className="shell-butterfly-layer" aria-hidden="true">
-        {SHELL_BUTTERFLIES.map((butterfly, index) => (
-          <span key={`${butterfly.src}-${index}`} className={`shell-butterfly is-${butterfly.role}`} style={butterfly.style}>
-            <img className="shell-butterfly-shadow" src={butterfly.src} alt="" />
-            <img className="shell-butterfly-rim" src={butterfly.src} alt="" />
-            <img className="shell-butterfly-body" src={butterfly.src} alt="" />
-          </span>
-        ))}
-      </div>
+    <div className="app-root">
+      <SharedSceneBackground
+        beamStage={beamStage}
+        showButterflies={showShell}
+        butterflyEntranceMode={shellEntryMode}
+      />
 
-      <TopBar route={route} railCollapsed={railCollapsed} onNavigate={(next) => void handleNavigate(next)} onToggleRail={() => setRailCollapsed((value) => !value)} onRefresh={() => void handleRefreshShell()} />
+      <AnimatePresence mode="wait" initial={false}>
+        {rootScene !== "shell" ? (
+          <StartupScene
+            key="startup-scene"
+            phase={startupPhase}
+            payload={startupPayload}
+            busyLabel={startupBusyLabel}
+            onPrimaryAction={() => void handleStartupPrimaryAction()}
+            onRetry={() => void handleStartupRetry()}
+          />
+        ) : null}
+      </AnimatePresence>
 
-      <div className={`shell-body ${railCollapsed ? "is-rail-collapsed" : ""}`}>
-        <FriendRail
-          railCollapsed={railCollapsed}
-          currentFriend={currentFriend}
-          friendListType={friendListType}
-          friendKeyword={friendKeyword}
-          friendRail={friendRail}
-          onToggleListType={(listType) => void handleFriendRailUpdate(listType, friendKeyword)}
-          onKeywordChange={(keyword) => void handleFriendRailUpdate(friendListType, keyword)}
-          onToggleRail={() => setRailCollapsed(false)}
-          onClearRecent={() => void invokeBridge("clearRecentFriends").then(applyShellPayload)}
-          onSelectFriend={(uid) => void handleSelectFriend(uid)}
-          onPinFriend={(uid) => void mutateFriend("pinFriend", uid)}
-          onUnpinFriend={(uid) => void mutateFriend("unpinFriend", uid)}
-          onDeleteFriend={(uid) => void mutateFriend("deleteRecentFriend", uid)}
-        />
+      <AnimatePresence mode="wait" initial={false}>
+        {showShell && shell ? (
+          <motion.div
+            key="shell-scene"
+            className="app-shell"
+            initial={false}
+            animate={{ opacity: shellHomeEntryActive && !shellEntryStarted ? 0 : 1 }}
+            exit={{ opacity: 0 }}
+            transition={{
+              duration: shellHomeEntryActive ? (shellEntryStarted ? 0.24 : 0) : 0.36,
+              ease: [0.16, 1, 0.3, 1]
+            }}
+          >
+            <TopBar
+              route={route}
+              railCollapsed={railCollapsed}
+              onNavigate={(next) => void handleNavigate(next)}
+              onToggleRail={() => setRailCollapsed((value) => !value)}
+              onRefresh={() => void handleRefreshShell()}
+              shellEntryMode={shellEntryMode}
+              shellEntryStarted={shellEntryStarted}
+            />
 
-        <motion.main className="main-stage" layout transition={{ duration: 0.28, ease: "easeOut" }}>
-          <div className="main-stage-slice">
-            <div className="stage-header">
-              <div className="stage-header-copy">
-                <div className="stage-title-row">
-                  <h1>{routeMeta.label}</h1>
-                </div>
-              </div>
-              {route === "relation" ? (
-                <div className="stage-header-actions">
-                  <button className="secondary-button" onClick={() => void handleGlobalArchiveSync()}>
-                    全好友归档
-                  </button>
-                  <button className="secondary-button" onClick={() => void handleRelationRefresh(true)}>
-                    刷新分析
-                  </button>
-                </div>
-              ) : null}
-            </div>
+            <div className={`shell-body ${railCollapsed ? "is-rail-collapsed" : ""}`}>
+              <FriendRail
+                railCollapsed={railCollapsed}
+                currentFriend={currentFriend}
+                friendListType={friendListType}
+                friendKeyword={friendKeyword}
+                friendRail={friendRail}
+                shellEntryMode={shellEntryMode}
+                shellEntryStarted={shellEntryStarted}
+                onToggleListType={(listType) => void handleFriendRailUpdate(listType, friendKeyword)}
+                onKeywordChange={(keyword) => void handleFriendRailUpdate(friendListType, keyword)}
+                onToggleRail={() => setRailCollapsed(false)}
+                onClearRecent={() => void invokeBridge("clearRecentFriends").then(applyShellPayload)}
+                onSelectFriend={(uid) => void handleSelectFriend(uid)}
+                onPinFriend={(uid) => void mutateFriend("pinFriend", uid)}
+                onUnpinFriend={(uid) => void mutateFriend("unpinFriend", uid)}
+                onDeleteFriend={(uid) => void mutateFriend("deleteRecentFriend", uid)}
+              />
 
-            <div className="route-viewport">
-              <AnimatePresence mode="wait" initial={false} custom={routeDirection}>
-                <motion.section
-                  key={route}
-                  className="page-section route-stage"
-                  custom={routeDirection}
-                  variants={routeStageVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
+              <motion.main className="main-stage" layout transition={{ duration: 0.28, ease: "easeOut" }}>
+                <motion.div
+                  className="main-stage-slice"
+                  initial={false}
+                  animate={
+                    shellHomeEntryActive && !shellEntryStarted
+                      ? { opacity: 0, y: 44, scale: 0.946, filter: "blur(18px)" }
+                      : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }
+                  }
+                  transition={
+                    shellHomeEntryActive
+                      ? shellEntryStarted
+                        ? { duration: 1.16, delay: 1.52, ease: [0.16, 1, 0.3, 1] }
+                        : { duration: 0 }
+                      : { duration: 0 }
+                  }
                 >
-                  {route === "home" ? <HomeRoute shell={shell} currentFriend={currentFriend} homeCards={homeCards} /> : null}
-                  {route === "song" ? (
-                    <SongRoute
-                      songFilters={songFilters}
-                      setSongFilters={setSongFilters}
-                      songResult={songResult}
-                      songActiveDates={songActiveDates}
-                      hasQueried={songResult !== null}
-                      onQuery={() => void handleSongQuery()}
-                      onReset={() => {
-                        setSongFilters({ scope: "recent", pages: 3, sender_scope: "all", query_mode: "all", target_date: "", start_date: "", end_date: "", keyword: "" });
-                        setSongResult(null);
-                      }}
-                    />
-                  ) : null}
-                  {route === "chat" ? (
-                    <ChatRoute
-                      chatFilters={chatFilters}
-                      setChatFilters={setChatFilters}
-                      chatResult={chatResult}
-                      chatActiveDates={chatActiveDates}
-                      hasQueried={chatResult !== null}
-                      onQuery={() => void handleChatQuery()}
-                      onReset={() => {
-                        setChatFilters({ scope: "recent", pages: 3, sender_scope: "all", message_type: "all", query_mode: "all", target_date: "", start_datetime: "", end_datetime: "", keyword: "" });
-                        setChatResult(null);
-                      }}
-                    />
-                  ) : null}
-                  {route === "shadow" ? (
-                    <ShadowRoute
-                      shell={shell}
-                      shadowPayload={shadowPayload}
-                      shadowOwnedPlaylists={shadowOwnedPlaylists}
-                      songActiveDates={songActiveDates}
-                      shadowTab={shadowTab}
-                      setShadowTab={setShadowTab}
-                    shadowSelectorForm={shadowSelectorForm}
-                    setShadowSelectorForm={setShadowSelectorForm}
-                    shadowGenerateFilters={shadowGenerateFilters}
-                    setShadowGenerateFilters={setShadowGenerateFilters}
-                    selectedCandidateIds={selectedCandidateIds}
-                    onLoadOwnedPlaylists={() => void handleLoadOwnedPlaylists()}
-                    onSaveTarget={() => void handleSaveShadowTarget()}
-                    onLoadCandidates={() => void handleLoadShadowCandidates()}
-                    onToggleCandidate={(msgId, checked) => void handleToggleCandidate(msgId, checked)}
-                      onBulkCandidate={(mode) => void handleBulkCandidate(mode)}
-                      onGenerate={() => void handleGenerateShadowPlaylist()}
-                      onRefreshStatus={() => void handleRefreshShadowStatus()}
-                    />
-                  ) : null}
-                  {route === "relation" ? (
-                    <RelationRoute
-                      relationPayload={relationPayload}
-                      relationTab={relationTab}
-                      setRelationTab={setRelationTab}
-                      relationWindowMode={relationWindowMode}
-                      setRelationWindowMode={setRelationWindowMode}
-                      relationYear={relationYear}
-                      setRelationYear={setRelationYear}
-                      friendAiMode={friendAiMode}
-                      setFriendAiMode={setFriendAiMode}
-                      selfAiMode={selfAiMode}
-                      setSelfAiMode={setSelfAiMode}
-                      friendInsight={friendInsight}
-                      selfInsight={selfInsight}
-                      reports={reports}
-                      reportType={reportType}
-                      setReportType={setReportType}
-                      reportKeyword={reportKeyword}
-                      setReportKeyword={setReportKeyword}
-                      currentFriend={currentFriend}
-                      onRefresh={() => void handleRelationRefresh(true)}
-                      onGenerateFriendAi={() => void handleGenerateFriendAi()}
-                      onGenerateSelfAi={() => void handleGenerateSelfAi()}
-                      onExportFriendReport={() => void handleExportFriendReport()}
-                      onExportSelfReport={() => void handleExportSelfReport()}
-                      onExportAnnualReport={() => void handleExportAnnualReport()}
-                      onLoadReports={() => void loadReports()}
-                      onCleanupReports={() => void invokeBridge<any>("cleanupRelationReports").then(() => { setToast("已清理失效报告。"); void loadReports(); })}
-                      onOpenReport={(path) => void invokeBridge("openReport", path)}
-                      onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
-                    />
-                  ) : null}
-                  {route === "settings" ? (
-                    <SettingsRoute
-                      settingsPayload={settingsPayload}
-                      settingsForm={settingsForm}
-                      setSettingsForm={setSettingsForm}
-                      onAction={(method, successText) => void handleSettingsAction(method, successText)}
-                      onSave={() => void handleSaveSettings()}
-                      onRefresh={() => void loadSettings(true)}
-                      onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
-                    />
-                  ) : null}
-                  {!["home", "song", "chat", "shadow", "relation", "settings"].includes(route) ? (
-                    <EmptyState title="当前路由未就绪" detail="这个页面还没有被绑定到 Web Shell。继续推进时我会把它接进统一壳层。" />
-                  ) : null}
-                </motion.section>
-              </AnimatePresence>
+                  <motion.div
+                    className="stage-header"
+                    initial={false}
+                    animate={
+                      shellHomeEntryActive && !shellEntryStarted
+                        ? { opacity: 0, y: 26, filter: "blur(12px)" }
+                        : { opacity: 1, y: 0, filter: "blur(0px)" }
+                    }
+                    transition={
+                      shellHomeEntryActive
+                        ? shellEntryStarted
+                          ? { duration: 1.04, delay: 1.76, ease: [0.16, 1, 0.3, 1] }
+                          : { duration: 0 }
+                        : { duration: 0 }
+                    }
+                  >
+                    <div className="stage-header-copy">
+                      <div className="stage-title-row">
+                        <h1>{routeMeta.label}</h1>
+                      </div>
+                    </div>
+                    {route === "relation" ? (
+                      <div className="stage-header-actions">
+                        <button className="secondary-button" onClick={() => void handleGlobalArchiveSync()}>
+                          全好友归档
+                        </button>
+                        <button className="secondary-button" onClick={() => void handleRelationRefresh(true)}>
+                          刷新分析
+                        </button>
+                      </div>
+                    ) : null}
+                  </motion.div>
+
+                  <div className="route-viewport">
+                    <AnimatePresence mode="wait" initial={false} custom={routeDirection}>
+                      <motion.section
+                        key={route}
+                        className="page-section route-stage"
+                        custom={routeDirection}
+                        variants={routeStageVariants}
+                        initial={shellHomeEntryActive && route === "home" ? false : "initial"}
+                        animate="animate"
+                        exit="exit"
+                      >
+                        {route === "home" ? (
+                          <HomeRoute
+                            shell={shell}
+                            currentFriend={currentFriend}
+                            homeCards={homeCards}
+                            shellEntryMode={shellEntryMode}
+                            shellEntryStarted={shellEntryStarted}
+                          />
+                        ) : null}
+                        {route === "song" ? (
+                          <SongRoute
+                            songFilters={songFilters}
+                            setSongFilters={setSongFilters}
+                            songResult={songResult}
+                            songActiveDates={songActiveDates}
+                            hasQueried={songResult !== null}
+                            onQuery={() => void handleSongQuery()}
+                            onReset={() => {
+                              setSongFilters({ scope: "recent", pages: 3, sender_scope: "all", query_mode: "all", target_date: "", start_date: "", end_date: "", keyword: "" });
+                              setSongResult(null);
+                            }}
+                          />
+                        ) : null}
+                        {route === "chat" ? (
+                          <ChatRoute
+                            chatFilters={chatFilters}
+                            setChatFilters={setChatFilters}
+                            chatResult={chatResult}
+                            chatActiveDates={chatActiveDates}
+                            hasQueried={chatResult !== null}
+                            onQuery={() => void handleChatQuery()}
+                            onReset={() => {
+                              setChatFilters({ scope: "recent", pages: 3, sender_scope: "all", message_type: "all", query_mode: "all", target_date: "", start_datetime: "", end_datetime: "", keyword: "" });
+                              setChatResult(null);
+                            }}
+                          />
+                        ) : null}
+                        {route === "shadow" ? (
+                          <ShadowRoute
+                            shell={shell}
+                            shadowPayload={shadowPayload}
+                            shadowOwnedPlaylists={shadowOwnedPlaylists}
+                            songActiveDates={songActiveDates}
+                            shadowTab={shadowTab}
+                            setShadowTab={setShadowTab}
+                            shadowSelectorForm={shadowSelectorForm}
+                            setShadowSelectorForm={setShadowSelectorForm}
+                            shadowGenerateFilters={shadowGenerateFilters}
+                            setShadowGenerateFilters={setShadowGenerateFilters}
+                            selectedCandidateIds={selectedCandidateIds}
+                            onLoadOwnedPlaylists={() => void handleLoadOwnedPlaylists()}
+                            onSaveTarget={() => void handleSaveShadowTarget()}
+                            onLoadCandidates={() => void handleLoadShadowCandidates()}
+                            onToggleCandidate={(msgId, checked) => void handleToggleCandidate(msgId, checked)}
+                            onBulkCandidate={(mode) => void handleBulkCandidate(mode)}
+                            onGenerate={() => void handleGenerateShadowPlaylist()}
+                            onRefreshStatus={() => void handleRefreshShadowStatus()}
+                          />
+                        ) : null}
+                        {route === "relation" ? (
+                          <RelationRoute
+                            relationPayload={relationPayload}
+                            relationTab={relationTab}
+                            setRelationTab={setRelationTab}
+                            relationWindowMode={relationWindowMode}
+                            setRelationWindowMode={setRelationWindowMode}
+                            relationYear={relationYear}
+                            setRelationYear={setRelationYear}
+                            friendAiMode={friendAiMode}
+                            setFriendAiMode={setFriendAiMode}
+                            selfAiMode={selfAiMode}
+                            setSelfAiMode={setSelfAiMode}
+                            friendInsight={friendInsight}
+                            selfInsight={selfInsight}
+                            reports={reports}
+                            reportType={reportType}
+                            setReportType={setReportType}
+                            reportKeyword={reportKeyword}
+                            setReportKeyword={setReportKeyword}
+                            currentFriend={currentFriend}
+                            onRefresh={() => void handleRelationRefresh(true)}
+                            onGenerateFriendAi={() => void handleGenerateFriendAi()}
+                            onGenerateSelfAi={() => void handleGenerateSelfAi()}
+                            onExportFriendReport={() => void handleExportFriendReport()}
+                            onExportSelfReport={() => void handleExportSelfReport()}
+                            onExportAnnualReport={() => void handleExportAnnualReport()}
+                            onLoadReports={() => void loadReports()}
+                            onCleanupReports={() => void invokeBridge<any>("cleanupRelationReports").then(() => { notify("已清理失效报告。"); void loadReports(); })}
+                            onOpenReport={(path) => void invokeBridge("openReport", path)}
+                            onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
+                          />
+                        ) : null}
+                        {route === "settings" ? (
+                          <SettingsRoute
+                            settingsPayload={settingsPayload}
+                            settingsForm={settingsForm}
+                            setSettingsForm={setSettingsForm}
+                            onAction={(method, successText) => void handleSettingsAction(method, successText)}
+                            onSave={() => void handleSaveSettings()}
+                            onRefresh={() => void loadSettings(true)}
+                            onOpenReportDirectory={() => void invokeBridge("openReportDirectory")}
+                          />
+                        ) : null}
+                        {!["home", "song", "chat", "shadow", "relation", "settings"].includes(route) ? (
+                          <EmptyState title="当前路由未就绪" detail="这个页面还没有被绑定到 Web Shell。继续推进时我会把它接进统一壳层。" />
+                        ) : null}
+                      </motion.section>
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              </motion.main>
             </div>
-          </div>
-        </motion.main>
-      </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {portalTarget
         ? createPortal(
-            <>
-              <AnimatePresence>
-                {toast ? (
-                  <motion.button
-                    className="toast"
-                    onClick={() => setToast("")}
-                    initial={{ opacity: 0, y: 12, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                    transition={{ duration: 0.28, ease: "easeOut" }}
-                  >
-                    {toast}
-                  </motion.button>
-                ) : null}
-              </AnimatePresence>
-            </>,
+            <AnimatePresence mode="wait" initial={false}>
+              {activeToast ? (
+                <motion.div
+                  key={activeToast.id}
+                  className="toast"
+                  initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                >
+                  {activeToast.message}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>,
             portalTarget
           )
         : null}

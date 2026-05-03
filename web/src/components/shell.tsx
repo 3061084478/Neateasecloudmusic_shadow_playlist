@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FriendListType, ROUTES, RouteKey } from "../constants";
+import type { ShellEntryMode } from "../startup";
 import { Avatar, EmptyState } from "./primitives";
 
 const BRAND_LOGO_SRC = "brand/shadow_brand_mark_trimmed.png";
@@ -10,21 +11,28 @@ export function TopBar({
   railCollapsed,
   onNavigate,
   onToggleRail,
-  onRefresh
+  onRefresh,
+  shellEntryMode,
+  shellEntryStarted
 }: {
   route: RouteKey;
   railCollapsed: boolean;
   onNavigate: (route: RouteKey) => void;
   onToggleRail: () => void;
   onRefresh: () => void;
+  shellEntryMode: ShellEntryMode;
+  shellEntryStarted: boolean;
 }) {
+  const shellEntryHome = shellEntryMode === "shell-enter-home";
+  const shellEntryArmed = shellEntryHome && !shellEntryStarted;
+
   return (
     <header className="topbar">
       <motion.div
         className="shell-slice shell-brand-slice"
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.24, ease: "easeOut" }}
+        initial={false}
+        animate={shellEntryArmed ? { opacity: 0, y: 30, filter: "blur(10px)" } : { opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={shellEntryHome ? (shellEntryStarted ? { duration: 0.92, delay: 0.42, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }) : { duration: 0 }}
       >
         <div className="brand-block">
           <div className="brand-logo" aria-label="Shadow">
@@ -35,9 +43,9 @@ export function TopBar({
 
       <motion.div
         className="shell-slice shell-nav-slice"
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.24, delay: 0.04, ease: "easeOut" }}
+        initial={false}
+        animate={shellEntryArmed ? { opacity: 0, y: -56, filter: "blur(12px)" } : { opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={shellEntryHome ? (shellEntryStarted ? { duration: 1.28, delay: 1.02, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }) : { duration: 0 }}
       >
         <nav className="topnav">
           {ROUTES.map((item) => (
@@ -64,9 +72,9 @@ export function TopBar({
 
       <motion.div
         className="shell-slice shell-actions-slice"
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.24, delay: 0.08, ease: "easeOut" }}
+        initial={false}
+        animate={shellEntryArmed ? { opacity: 0, y: -56, filter: "blur(12px)" } : { opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={shellEntryHome ? (shellEntryStarted ? { duration: 1.28, delay: 1.18, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }) : { duration: 0 }}
       >
         <div className="topbar-actions">
           <motion.button className="ghost-button" onClick={onToggleRail} whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.98 }}>
@@ -87,6 +95,8 @@ export function FriendRail({
   friendListType,
   friendKeyword,
   friendRail,
+  shellEntryMode,
+  shellEntryStarted,
   onToggleListType,
   onKeywordChange,
   onToggleRail,
@@ -101,6 +111,8 @@ export function FriendRail({
   friendListType: FriendListType;
   friendKeyword: string;
   friendRail: any;
+  shellEntryMode: ShellEntryMode;
+  shellEntryStarted: boolean;
   onToggleListType: (listType: FriendListType) => void;
   onKeywordChange: (keyword: string) => void;
   onToggleRail: () => void;
@@ -112,6 +124,8 @@ export function FriendRail({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const shellEntryHome = shellEntryMode === "shell-enter-home";
+  const shellEntryArmed = shellEntryHome && !shellEntryStarted;
   const selectedUid = currentFriend?.uid || "";
   const canPin = Boolean(selectedUid);
   const selectedIsPinned = Boolean(currentFriend?.isPinned);
@@ -180,14 +194,14 @@ export function FriendRail({
     <motion.aside
       className={`friend-rail ${railCollapsed ? "is-collapsed" : ""}`}
       layout
-      initial={{ opacity: 0, x: -18 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.28, ease: "easeOut" }}
+      initial={false}
+      animate={shellEntryArmed ? { opacity: 0, x: -82, filter: "blur(14px)" } : { opacity: 1, x: 0, filter: "blur(0px)" }}
+      transition={shellEntryHome ? (shellEntryStarted ? { duration: 1.34, delay: 1.42, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }) : { duration: 0 }}
     >
       {railCollapsed ? (
         <motion.div
           className="rail-collapsed-stack"
-          initial={{ opacity: 0, y: 12 }}
+          initial={shellEntryHome ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
         >
@@ -201,7 +215,7 @@ export function FriendRail({
         </motion.div>
       ) : (
         <>
-          <motion.div className="rail-profile-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: "easeOut" }}>
+          <motion.div className="rail-profile-card" initial={shellEntryHome ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: "easeOut" }}>
             <Avatar avatarUrl={currentFriend?.avatarUrl || currentFriend?.avatar_url} name={currentFriend?.nickname} size={56} />
             <div className="rail-profile-copy">
               <strong>{currentFriend?.nickname || "未选择好友"}</strong>
@@ -209,7 +223,7 @@ export function FriendRail({
             </div>
           </motion.div>
 
-          <motion.div className="rail-toolbar" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, delay: 0.04, ease: "easeOut" }}>
+          <motion.div className="rail-toolbar" initial={shellEntryHome ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, delay: 0.04, ease: "easeOut" }}>
             <div className="segmented">
               <button className={friendListType === "all" ? "is-active" : ""} onClick={() => onToggleListType("all")}>
                 全部好友
@@ -220,7 +234,7 @@ export function FriendRail({
             </div>
           </motion.div>
 
-          <motion.div className="rail-search-row" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}>
+          <motion.div className="rail-search-row" initial={shellEntryHome ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}>
             <input className="rail-search-input" value={friendKeyword} onChange={(event) => onKeywordChange(event.target.value)} placeholder="搜索昵称或 UID" />
             <div className="rail-menu-wrap" ref={menuRef}>
               <button type="button" className="rail-menu-trigger" onClick={() => setMenuOpen((value) => !value)} disabled={!menuItems.length}>
@@ -248,7 +262,7 @@ export function FriendRail({
 
           <motion.div
             className="friend-list"
-            initial="hidden"
+            initial={shellEntryHome ? false : "hidden"}
             animate="show"
             variants={{
               hidden: {},
