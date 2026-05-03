@@ -145,6 +145,6 @@ qrcode[pil]>=7.4
 ```
 
 ## 发布包
-
-Windows 便携版压缩包会包含可直接启动的 `Shadow.exe`。  
 如果你是普通使用者，优先下载便携版即可，不需要再额外配置终端环境。
+Windows 便携版请前往 [Releases](https://github.com/3061084478/Neateasecloudmusic_shadow_playlist/releases) 下载。
+Windows 便携版压缩包会包含可直接启动的 `Shadow.exe`。  
