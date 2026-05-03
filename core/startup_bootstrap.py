@@ -4,6 +4,7 @@ import os
 import socket
 import shutil
 import subprocess
+import sys
 import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -113,9 +114,7 @@ class StartupBootstrap:
         _host, target_port = self._resolve_api_host_port()
         runtime_dirs = [
             self.config_store.bundle_root / "runtime" / NCM_API_PACKAGE,
-            self.config_store.bundle_root / "runtime" / "ncm_api",
             self.config_store.workspace_root / "runtime" / NCM_API_PACKAGE,
-            self.config_store.workspace_root / "runtime" / "ncm_api",
         ]
         for runtime_dir in runtime_dirs:
             if not runtime_dir.exists():
@@ -125,12 +124,6 @@ class StartupBootstrap:
             if server_path.exists() and node_bin.exists():
                 return [
                     str(node_bin),
-                    "-e",
-                    self._build_node_eval(str(server_path), target_port),
-                ]
-            if server_path.exists() and shutil.which("node") is not None:
-                return [
-                    "node",
                     "-e",
                     self._build_node_eval(str(server_path), target_port),
                 ]
@@ -205,6 +198,10 @@ class StartupBootstrap:
         creationflags = subprocess.CREATE_NEW_CONSOLE if hasattr(subprocess, "CREATE_NEW_CONSOLE") else 0
 
         if command == DEFAULT_API_START_COMMAND:
+            if getattr(sys, "frozen", False):
+                raise StartupBootstrapError(
+                    "当前便携版缺少内置 API 运行时。请重新生成包含 runtime\\NeteaseCloudMusicApi 的发布包。"
+                )
             if shutil.which("node") is None:
                 raise StartupBootstrapError("未检测到 node，请先安装 Node.js 后再启动。")
             self._ensure_default_api_package_cached(env)

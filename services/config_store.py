@@ -78,15 +78,10 @@ class ConfigStore:
 
     @property
     def font_assets_dir(self) -> str:
-        relatives = (
-            Path("ui-ux-pro-max-skill-main/.claude/skills/ui-styling/canvas-fonts"),
-            Path("assets/fonts"),
-        )
+        relatives = (Path("assets/fonts"),)
         search_roots = (
             self.bundle_root,
             self.workspace_root,
-            self.workspace_root.parent,
-            self.bundle_root.parent,
         )
         for base in search_roots:
             for relative in relatives:
