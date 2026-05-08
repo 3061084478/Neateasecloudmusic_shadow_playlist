@@ -431,13 +431,20 @@ class AppController(QtCore.QObject):
             if not uid:
                 continue
             try:
+                backfill_status = self.chat_service.repository.get_backfill_status(uid)
+                if backfill_status is None:
+                    self.chat_service.sync_full_history_backfill(uid=uid, limit=limit)
+                    full_synced += 1
+                    self.chat_service.sync_chat_archive_cursor_to_latest_archived(uid)
+                    self.playlist_service.sync_song_archive_cursor_to_latest_archived(uid)
+                    continue
                 latest_archived = self.chat_service.repository.get_latest_message(uid=uid)
                 archive_newest_ms = int((latest_archived or {}).get("msg_time_ms") or 0)
-                stop_at_ms = max(
-                    archive_newest_ms,
-                    self.chat_service.get_chat_archive_cursor_ms(uid),
-                    self.playlist_service.get_song_archive_cursor_ms(uid),
-                )
+                # Only trust messages that are already in the archive when deciding
+                # where recent-delta sync can stop. Query actions may advance archive
+                # cursors ahead of what has actually been persisted, which would make
+                # us skip real gaps between the archive newest time and the cursor.
+                stop_at_ms = archive_newest_ms
                 if stop_at_ms <= 0:
                     self.chat_service.sync_full_history_backfill(uid=uid, limit=limit)
                     full_synced += 1
